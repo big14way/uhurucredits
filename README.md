@@ -272,8 +272,8 @@ CI Pipeline:               All checks passing
 
 ## Hackathon Tracks
 
-- **DeFi & Tokenization** ($20K first place): ERC-4626 tranche vaults, uncollateralized lending, on-chain credit identity
-- **World Mini App** ($5K first place): Full World App integration with MiniKit, World ID verification
+- **DeFi & Tokenization**: ERC-4626 tranche vaults, uncollateralized lending, on-chain credit identity
+- **World Mini App**: Full World App integration with MiniKit, World ID verification
 
 ## Team
 
