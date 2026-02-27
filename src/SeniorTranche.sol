@@ -22,10 +22,7 @@ contract SeniorTranche is ERC4626, AccessControl, Pausable, ReentrancyGuard {
     event LoanDisbursed(address indexed borrower, uint256 amount);
     event RepaymentReceived(uint256 principal, uint256 interest, uint256 seniorShare, uint256 juniorShare);
 
-    constructor(IERC20 _usdc)
-        ERC4626(_usdc)
-        ERC20("Uhuru Senior Vault", "uSENIOR")
-    {
+    constructor(IERC20 _usdc) ERC4626(_usdc) ERC20("Uhuru Senior Vault", "uSENIOR") {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
@@ -45,7 +42,12 @@ contract SeniorTranche is ERC4626, AccessControl, Pausable, ReentrancyGuard {
         return balance;
     }
 
-    function disburseLoan(uint256 amount, address borrower) external onlyRole(LOAN_MANAGER_ROLE) nonReentrant whenNotPaused {
+    function disburseLoan(uint256 amount, address borrower)
+        external
+        onlyRole(LOAN_MANAGER_ROLE)
+        nonReentrant
+        whenNotPaused
+    {
         IERC20(asset()).safeTransfer(borrower, amount);
         emit LoanDisbursed(borrower, amount);
     }

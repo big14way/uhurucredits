@@ -22,10 +22,7 @@ contract JuniorTranche is ERC4626, AccessControl, Pausable, ReentrancyGuard {
     event JuniorInterestReceived(uint256 amount);
     event LossAbsorbed(uint256 requestedAmount, uint256 actualAmount);
 
-    constructor(IERC20 _usdc)
-        ERC4626(_usdc)
-        ERC20("Uhuru Junior Vault", "uJUNIOR")
-    {
+    constructor(IERC20 _usdc) ERC4626(_usdc) ERC20("Uhuru Junior Vault", "uJUNIOR") {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 

@@ -71,9 +71,7 @@ contract IntegrationTest is Test {
         // Step 1: World ID verifyAndMint (mock the worldId.verifyProof call)
         vm.mockCall(
             mockWorldId,
-            abi.encodeWithSignature(
-                "verifyProof(uint256,uint256,uint256,uint256,uint256,uint256[8])"
-            ),
+            abi.encodeWithSignature("verifyProof(uint256,uint256,uint256,uint256,uint256,uint256[8])"),
             abi.encode()
         );
 
@@ -138,9 +136,7 @@ contract IntegrationTest is Test {
         // Mock World ID and mint
         vm.mockCall(
             mockWorldId,
-            abi.encodeWithSignature(
-                "verifyProof(uint256,uint256,uint256,uint256,uint256,uint256[8])"
-            ),
+            abi.encodeWithSignature("verifyProof(uint256,uint256,uint256,uint256,uint256,uint256[8])"),
             abi.encode()
         );
         uint256[8] memory proof;
@@ -187,9 +183,7 @@ contract IntegrationTest is Test {
         // Mint profile first
         vm.mockCall(
             mockWorldId,
-            abi.encodeWithSignature(
-                "verifyProof(uint256,uint256,uint256,uint256,uint256,uint256[8])"
-            ),
+            abi.encodeWithSignature("verifyProof(uint256,uint256,uint256,uint256,uint256,uint256[8])"),
             abi.encode()
         );
         uint256[8] memory proof;
@@ -203,9 +197,7 @@ contract IntegrationTest is Test {
     function testWorldIDGateDoubleVerifyReverts() public {
         vm.mockCall(
             mockWorldId,
-            abi.encodeWithSignature(
-                "verifyProof(uint256,uint256,uint256,uint256,uint256,uint256[8])"
-            ),
+            abi.encodeWithSignature("verifyProof(uint256,uint256,uint256,uint256,uint256,uint256[8])"),
             abi.encode()
         );
 

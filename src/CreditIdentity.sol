@@ -47,12 +47,10 @@ contract CreditIdentity is ERC721, AccessControl, IERC5192 {
         emit Locked(tokenId);
     }
 
-    function updateScore(
-        address wallet,
-        uint16 score,
-        bool worldIdVerified,
-        bool reclaimVerified
-    ) external onlyRole(CREDIT_ORACLE_ROLE) {
+    function updateScore(address wallet, uint16 score, bool worldIdVerified, bool reclaimVerified)
+        external
+        onlyRole(CREDIT_ORACLE_ROLE)
+    {
         require(score <= 1000, "Score exceeds max");
         require(_hasMinted[wallet], "No profile");
         CreditData storage data = creditData[wallet];

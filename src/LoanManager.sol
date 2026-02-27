@@ -12,7 +12,11 @@ import {IJuniorTranche} from "./interfaces/IJuniorTranche.sol";
 contract LoanManager is AccessControl, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    enum LoanStatus { Active, Repaid, Defaulted }
+    enum LoanStatus {
+        Active,
+        Repaid,
+        Defaulted
+    }
 
     struct Loan {
         address borrower;
@@ -48,12 +52,10 @@ contract LoanManager is AccessControl, ReentrancyGuard {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
-    function setContracts(
-        address _creditIdentity,
-        address _seniorTranche,
-        address _juniorTranche,
-        address _usdc
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setContracts(address _creditIdentity, address _seniorTranche, address _juniorTranche, address _usdc)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
         require(!contractsSet, "Contracts already set");
         creditIdentity = ICreditIdentity(_creditIdentity);
         seniorTranche = ISeniorTranche(_seniorTranche);
@@ -66,10 +68,7 @@ contract LoanManager is AccessControl, ReentrancyGuard {
         require(creditIdentity.isEligible(msg.sender), "Not eligible");
         require(activeLoanId[msg.sender] == 0, "Existing active loan");
         require(amount <= creditIdentity.getMaxLoanAmount(msg.sender), "Amount exceeds max");
-        require(
-            durationWeeks == 2 || durationWeeks == 4 || durationWeeks == 8,
-            "Invalid duration"
-        );
+        require(durationWeeks == 2 || durationWeeks == 4 || durationWeeks == 8, "Invalid duration");
 
         uint256 rate = _getInterestRate(msg.sender);
         uint256 interest = (amount * rate) / 100;
@@ -140,10 +139,7 @@ contract LoanManager is AccessControl, ReentrancyGuard {
     function markDefault(uint256 loanId) external {
         Loan storage loan = loans[loanId];
         require(loan.status == LoanStatus.Active, "Loan not active");
-        require(
-            block.timestamp > loan.nextPaymentDue + 14 days,
-            "Grace period not expired"
-        );
+        require(block.timestamp > loan.nextPaymentDue + 14 days, "Grace period not expired");
 
         loan.status = LoanStatus.Defaulted;
 

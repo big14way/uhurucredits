@@ -14,34 +14,17 @@ contract WorldIDGate {
 
     event VerifiedAndMinted(address indexed wallet, uint256 nullifierHash);
 
-    constructor(
-        address _worldId,
-        address _creditIdentity,
-        string memory _appId,
-        string memory _action
-    ) {
+    constructor(address _worldId, address _creditIdentity, string memory _appId, string memory _action) {
         worldId = IWorldID(_worldId);
         creditIdentity = ICreditIdentity(_creditIdentity);
-        externalNullifierHash = _hashToField(
-            abi.encodePacked(_hashToField(abi.encodePacked(_appId)), _action)
-        );
+        externalNullifierHash = _hashToField(abi.encodePacked(_hashToField(abi.encodePacked(_appId)), _action));
     }
 
-    function verifyAndMint(
-        address signal,
-        uint256 root,
-        uint256 nullifierHash,
-        uint256[8] calldata proof
-    ) external {
+    function verifyAndMint(address signal, uint256 root, uint256 nullifierHash, uint256[8] calldata proof) external {
         require(!nullifierHashes[nullifierHash], "Already verified");
 
         worldId.verifyProof(
-            root,
-            groupId,
-            _hashToField(abi.encodePacked(signal)),
-            externalNullifierHash,
-            nullifierHash,
-            proof
+            root, groupId, _hashToField(abi.encodePacked(signal)), externalNullifierHash, nullifierHash, proof
         );
 
         nullifierHashes[nullifierHash] = true;

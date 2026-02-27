@@ -29,22 +29,15 @@ contract Deploy is Script {
         LoanManager loanManager = new LoanManager();
         CREConsumer creConsumer = new CREConsumer();
         CCIPSync ccipSync = new CCIPSync(CCIP_ROUTER_BASE_SEPOLIA, LINK_BASE_SEPOLIA);
-        WorldIDGate worldIDGate = new WorldIDGate(
-            WORLD_ID_BASE_SEPOLIA,
-            address(creditIdentity),
-            "app_uhuru_credit",
-            "verify-credit"
-        );
+        WorldIDGate worldIDGate =
+            new WorldIDGate(WORLD_ID_BASE_SEPOLIA, address(creditIdentity), "app_uhuru_credit", "verify-credit");
 
         // Wire up contracts
         creditIdentity.grantRole(creditIdentity.CREDIT_ORACLE_ROLE(), address(creConsumer));
         creditIdentity.grantRole(creditIdentity.LOAN_MANAGER_ROLE(), address(loanManager));
         creditIdentity.grantRole(creditIdentity.MINTER_ROLE(), address(worldIDGate));
         loanManager.setContracts(
-            address(creditIdentity),
-            address(seniorTranche),
-            address(juniorTranche),
-            USDC_BASE_SEPOLIA
+            address(creditIdentity), address(seniorTranche), address(juniorTranche), USDC_BASE_SEPOLIA
         );
         seniorTranche.setLoanManager(address(loanManager));
         seniorTranche.setJuniorTranche(address(juniorTranche));
