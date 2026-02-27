@@ -1,0 +1,19 @@
+{
+  "workflow": {
+    "name": "uhuru-credit-scoring",
+    "version": "1.0.0",
+    "description": "Privacy-preserving credit scoring for African borrowers"
+  },
+  "trigger": {
+    "type": "http",
+    "config": {
+      "requireSignature": true
+    }
+  },
+  "config": {
+    "monoApiUrl": "https://api.withmono.com",
+    "contractAddress": "REPLACE_WITH_DEPLOYED_CRE_CONSUMER_ADDRESS",
+    "chainSelectorName": "BASE_SEPOLIA",
+    "forwarderAddress": "REPLACE_WITH_BASE_SEPOLIA_FORWARDER_ADDRESS"
+  }
+}
