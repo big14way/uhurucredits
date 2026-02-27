@@ -81,7 +81,7 @@ Uhuru Credit builds **portable, privacy-preserving credit identity** using Afric
 | Component | Technology | Purpose |
 |-----------|-----------|---------|
 | Smart Contracts | Solidity 0.8.24, Foundry, OpenZeppelin v5 | On-chain credit protocol |
-| Credit Scoring | **Chainlink CRE** (Runtime Environment), WASM/TEE | Privacy-preserving score computation |
+| Credit Scoring | **Chainlink CRE** (Runtime Environment), `@chainlink/cre-sdk`, WASM/TEE | Privacy-preserving score computation |
 | Cross-chain | **Chainlink CCIP** (Base <-> Arbitrum Sepolia) | Portable credit scores across chains |
 | Open Banking | **Mono.co** (50+ Nigerian banks, Ghana, Kenya) | African banking data ingestion |
 | Mobile Money | **Reclaim Protocol** zkTLS (M-Pesa) | Mobile money verification without raw data |
@@ -90,6 +90,30 @@ Uhuru Credit builds **portable, privacy-preserving credit identity** using Afric
 | Distribution | **World Mini App** (MiniKit) | 10M+ World App users in Africa |
 | Frontend | Next.js 16, Tailwind CSS | Responsive mobile-first UI |
 | Backend | Express, TypeScript, ethers.js | API layer for data orchestration |
+
+## Project Structure
+
+```
+uhurucredit/
+├── src/                    # Solidity smart contracts (7 contracts)
+├── test/                   # Foundry test suite (25 tests)
+├── script/                 # Deployment scripts (Base + Arbitrum Sepolia)
+├── uhuru-cre/              # Official CRE CLI project
+│   ├── credit-scoring/     # Credit scoring workflow (main.ts)
+│   ├── por/                # Proof of Reserve template
+│   ├── nav/                # NAV publishing template
+│   ├── project.yaml        # CRE project config
+│   └── secrets.yaml        # Secret references
+├── cre-workflow/           # Scoring algorithm + tests (11 tests)
+│   └── src/
+│       ├── scoring-algorithm.ts
+│       ├── scoring-algorithm.test.ts
+│       ├── credit-scoring.ts
+│       └── simulate.ts
+├── backend/                # Express API server (7 routes)
+├── frontend/               # Next.js World Mini App (4 pages)
+└── foundry.toml            # Foundry configuration
+```
 
 ## Smart Contracts
 
@@ -127,16 +151,57 @@ Uhuru Credit uses Chainlink's CRE to privately compute credit scores. CRE workfl
 3. **DON consensus** — Multiple Chainlink nodes independently compute the score and reach consensus before writing on-chain
 4. **WASM sandbox** — Scoring algorithm compiles to WASM via Javy/QuickJS with strict sandboxing (100MB memory, 5-min timeout, no filesystem access)
 
+### CRE Workflow Architecture
+
+The credit scoring workflow is built with the official **CRE SDK** (`@chainlink/cre-sdk`) and runs as a WASM binary inside Chainlink's DON:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  CRE Trusted Execution Environment (TEE)                    │
+│                                                             │
+│  1. CronTrigger fires on schedule                           │
+│              │                                              │
+│              ▼                                              │
+│  2. HTTPClient fetches Mono.co bank transactions            │
+│     (DON consensus across multiple nodes)                   │
+│              │                                              │
+│              ▼                                              │
+│  3. Scoring Algorithm computes score (0-1000)               │
+│     • Balance health, tx frequency, income regularity       │
+│     • World ID + Reclaim zkTLS identity bonuses             │
+│     • Penalty deductions for risk factors                   │
+│              │                                              │
+│              ▼                                              │
+│  4. ABI encode: (address, uint16, bool, bool)               │
+│              │                                              │
+│              ▼                                              │
+│  5. EVMClient.writeReport() → CREConsumer contract          │
+│     (signed by DON consensus, verified on-chain)            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### CRE Simulation Output
+
+```
+✓ Workflow compiled
+[USER LOG] Running Uhuru Credit scoring CronTrigger
+[USER LOG] Starting Uhuru Credit scoring workflow - Mono API: https://api.withmono.com
+[USER LOG] Credit score computed: {"score": 400, "worldIdVerified": true, "reclaimVerified": false}
+[USER LOG] Writing credit score on-chain: wallet=0x...001, score=400
+[USER LOG] Credit score written on-chain: txHash=0x000...000
+✓ Workflow Simulation Result: "Score: 400"
+```
+
 ### Scoring Algorithm (0-1000)
 
 | Factor | Max Points | Description |
 |--------|-----------|-------------|
+| Base Score | 300 | Starting score for all users |
 | Balance Health | 200 | avg balance / avg monthly income ratio |
 | Transaction Frequency | 150 | Consistent banking activity (30+ tx/month = max) |
 | Income Regularity | 200 | Based on credit transaction amounts (NGN thresholds) |
 | World ID Verification | 100 | Sybil-proof unique human verification |
 | Reclaim zkTLS | 100 | M-Pesa mobile money data verification |
-| Base Score | 300 | Starting score for all users |
 | **Penalties** | | |
 | Negative Balance Days | -100 max | -3 per day with negative balance |
 | Existing Loans | -50 | Active outstanding debt |
@@ -182,6 +247,7 @@ Uhuru Credit generates revenue through multiple sustainable streams:
 ### Phase 1: Foundation (Current - Q1 2026)
 - [x] 7 smart contracts with full test suite (25 tests passing)
 - [x] CRE credit scoring workflow with Mono.co integration
+- [x] Official CRE CLI workflow simulation passing (Score: 400)
 - [x] World Mini App frontend (4 pages)
 - [x] Backend API with Reclaim Protocol M-Pesa verification
 - [x] CCIP cross-chain score sync (Base <-> Arbitrum)
@@ -215,6 +281,7 @@ Uhuru Credit generates revenue through multiple sustainable streams:
 - [Foundry](https://book.getfoundry.sh/getting-started/installation)
 - [Node.js](https://nodejs.org/) v18+
 - [Bun](https://bun.sh/) v1.0+
+- [CRE CLI](https://docs.chain.link/cre) v1.2.0+
 
 ### Smart Contracts
 
@@ -235,7 +302,26 @@ forge script script/Deploy.s.sol --rpc-url https://sepolia.base.org --broadcast
 forge script script/DeployArbitrum.s.sol --rpc-url https://sepolia-rollup.arbitrum.io/rpc --broadcast
 ```
 
-### CRE Workflow
+### CRE Workflow (Official CLI)
+
+```bash
+# Install CRE CLI
+curl -sSL https://cre.chain.link/install.sh | bash
+
+# Authenticate
+cre login
+
+# Navigate to project
+cd uhuru-cre
+
+# Install dependencies
+bun install --cwd ./credit-scoring
+
+# Simulate the credit scoring workflow
+cre workflow simulate credit-scoring
+```
+
+### CRE Scoring Tests
 
 ```bash
 cd cre-workflow
@@ -265,9 +351,10 @@ npm run dev                  # Starts on port 3000
 ## Test Results
 
 ```
-Smart Contracts (Foundry): 25/25 passing
-CRE Scoring Algorithm:     11/11 passing
-CI Pipeline:               All checks passing
+Smart Contracts (Foundry):   25/25 passing
+CRE Scoring Algorithm:       11/11 passing
+CRE Workflow Simulation:     ✓ Compiled & Simulated (Score: 400)
+CI Pipeline:                 All checks passing
 ```
 
 ## Hackathon Tracks
