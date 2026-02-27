@@ -127,10 +127,26 @@ uhurucredit/
 | `CCIPSync.sol` | Cross-chain sync | CCIP sender + receiver for score portability |
 | `WorldIDGate.sol` | Identity gate | World ID verification before profile creation |
 
-### Networks
+### Deployed Contracts
 
-- **Primary**: Base Sepolia (Chain ID: 84532)
-- **Secondary**: Arbitrum Sepolia (Chain ID: 421614)
+**Base Sepolia (Chain ID: 84532)**
+
+| Contract | Address |
+|----------|---------|
+| CreditIdentity | [`0x02cB407dF115c7Bf287dEd05aab870485fC800aB`](https://sepolia.basescan.org/address/0x02cB407dF115c7Bf287dEd05aab870485fC800aB) |
+| SeniorTranche | [`0xe468781867732309f62aCD0Fa6Fb00549Bf96299`](https://sepolia.basescan.org/address/0xe468781867732309f62aCD0Fa6Fb00549Bf96299) |
+| JuniorTranche | [`0x280979E7890bB8DDCaD92eF68c87F98452E5C856`](https://sepolia.basescan.org/address/0x280979E7890bB8DDCaD92eF68c87F98452E5C856) |
+| LoanManager | [`0xA29373f508CABcB647aC677C329f24a939b29776`](https://sepolia.basescan.org/address/0xA29373f508CABcB647aC677C329f24a939b29776) |
+| CREConsumer | [`0xa49Ae8a172017B6394310522c673A38d3D64b0A7`](https://sepolia.basescan.org/address/0xa49Ae8a172017B6394310522c673A38d3D64b0A7) |
+| CCIPSync | [`0x92e92bc8118aAE7704d1D0b05ec3d20b95F46ADe`](https://sepolia.basescan.org/address/0x92e92bc8118aAE7704d1D0b05ec3d20b95F46ADe) |
+| WorldIDGate | [`0xe0af52d2056fd0D55f5F26275e6F3464582a37E9`](https://sepolia.basescan.org/address/0xe0af52d2056fd0D55f5F26275e6F3464582a37E9) |
+
+**Arbitrum Sepolia (Chain ID: 421614)**
+
+| Contract | Address |
+|----------|---------|
+| CreditIdentity | [`0xFA938c958ebED1E484f92dd013DDBDc782a2Cf3D`](https://sepolia.arbiscan.io/address/0xFA938c958ebED1E484f92dd013DDBDc782a2Cf3D) |
+| CCIPSync | [`0x714532c747322448eABB75Cc956AD07DA08F7545`](https://sepolia.arbiscan.io/address/0x714532c747322448eABB75Cc956AD07DA08F7545) |
 
 ### Credit Tiers
 
