@@ -1,0 +1,7 @@
+{
+  "schedule": "0 */10 * * * *",
+  "monoApiUrl": "https://api.withmono.com",
+  "creConsumerAddress": "0x0000000000000000000000000000000000000001",
+  "chainName": "ethereum-testnet-sepolia-base-1",
+  "gasLimit": "500000"
+}

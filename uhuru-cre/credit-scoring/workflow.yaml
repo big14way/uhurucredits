@@ -1,0 +1,22 @@
+# ==========================================================================
+# CRE WORKFLOW SETTINGS FILE - Uhuru Credit Scoring
+# ==========================================================================
+# Privacy-preserving credit scoring workflow using Mono.co bank data
+# Fetches African banking transactions, computes score inside TEE,
+# and writes the result on-chain to CREConsumer contract.
+
+staging-settings:
+  user-workflow:
+    workflow-name: "uhuru-credit-scoring"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.json"
+    secrets-path: "../secrets.yaml"
+
+production-settings:
+  user-workflow:
+    workflow-name: "uhuru-credit-scoring"
+  workflow-artifacts:
+    workflow-path: "./main.ts"
+    config-path: "./config.json"
+    secrets-path: "../secrets.yaml"
