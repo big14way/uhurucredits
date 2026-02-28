@@ -4,89 +4,76 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { MiniKit } from "@worldcoin/minikit-js";
 import { API_URL, CONTRACTS, LoanManagerContractABI } from "@/lib/contracts";
+import { useWallet } from "@/lib/useWallet";
 
-function getAPR(score: number): number {
+function getAPR(score: number) {
   if (score >= 700) return 5;
   if (score >= 550) return 8;
   return 12;
 }
 
-function getTierName(score: number): string {
-  if (score >= 850) return "PREMIUM";
-  if (score >= 700) return "PRIME";
-  if (score >= 550) return "STANDARD";
-  if (score >= 400) return "MICRO";
-  return "INELIGIBLE";
+function getTier(score: number): { label: string; color: string; bg: string } {
+  if (score >= 850) return { label: "PREMIUM",   color: "#2dd4bf", bg: "rgba(13,148,136,0.15)" };
+  if (score >= 700) return { label: "PRIME",     color: "#34d399", bg: "rgba(16,185,129,0.15)" };
+  if (score >= 550) return { label: "STANDARD",  color: "#fbbf24", bg: "rgba(245,158,11,0.15)" };
+  if (score >= 400) return { label: "MICRO",     color: "#fb923c", bg: "rgba(249,115,22,0.15)" };
+  return               { label: "INELIGIBLE", color: "#f87171", bg: "rgba(239,68,68,0.1)"  };
 }
 
 export default function Apply() {
   const router = useRouter();
+  const { address, isInWorldApp } = useWallet();
   const [score, setScore] = useState(0);
   const [maxAmount, setMaxAmount] = useState(0);
   const [amount, setAmount] = useState(50);
-  const [durationWeeks, setDurationWeeks] = useState<number>(4);
+  const [durationWeeks, setDurationWeeks] = useState(4);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState("");
 
   const fetchProfile = useCallback(async () => {
     try {
-      const address = MiniKit.isInstalled()
-        ? MiniKit.user?.walletAddress || "0x0000000000000000000000000000000000000000"
-        : "0x0000000000000000000000000000000000000000";
       const res = await fetch(`${API_URL}/api/credit/status/${address}`);
       const data = await res.json();
       setScore(data.score);
       setMaxAmount(data.maxLoanAmount);
-      if (data.maxLoanAmount > 0) {
-        setAmount(Math.min(50, data.maxLoanAmount));
-      }
+      if (data.maxLoanAmount > 0) setAmount(Math.min(50, data.maxLoanAmount));
     } catch {
       // keep defaults
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [address]);
 
-  useEffect(() => {
-    fetchProfile();
-  }, [fetchProfile]);
+  useEffect(() => { fetchProfile(); }, [fetchProfile]);
 
   const apr = getAPR(score);
-  const interest = (amount * apr) / 100;
-  const totalRepayment = amount + interest;
-  const installmentAmount = totalRepayment / 4;
-  const paymentEveryDays = (durationWeeks * 7) / 4;
+  const interest = +(amount * apr / 100).toFixed(2);
+  const total = +(amount + interest).toFixed(2);
+  const installment = +(total / 4).toFixed(2);
+  const paymentDays = +((durationWeeks * 7) / 4).toFixed(1);
+  const tier = getTier(score);
 
-  const handleApplyLoan = async () => {
-    if (!MiniKit.isInstalled()) {
-      setError("Please open in World App to submit transactions");
-      return;
-    }
-
+  const handleApply = async () => {
+    if (!isInWorldApp) { setError("Please open in World App to submit transactions"); return; }
     setApplying(true);
     setError("");
-
     try {
       const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [
-          {
-            address: CONTRACTS.LOAN_MANAGER as `0x${string}`,
-            abi: LoanManagerContractABI,
-            functionName: "applyForLoan",
-            args: [BigInt(amount * 1e6), durationWeeks],
-          },
-        ],
+        transaction: [{
+          address: CONTRACTS.LOAN_MANAGER as `0x${string}`,
+          abi: LoanManagerContractABI,
+          functionName: "applyForLoan",
+          args: [BigInt(amount * 1e6), durationWeeks],
+        }],
       });
-
       if (finalPayload.status === "success") {
         router.push("/repay");
       } else {
         setError("Transaction failed. Please try again.");
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Transaction failed";
-      setError(message);
+      setError(err instanceof Error ? err.message : "Transaction failed");
     } finally {
       setApplying(false);
     }
@@ -94,128 +81,161 @@ export default function Apply() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="animate-pulse text-teal-400">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "#06060f" }}>
+        <svg className="animate-spin w-8 h-8 text-teal-500" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+        </svg>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-950">
-      <div className="max-w-md mx-auto px-4 py-6">
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <button onClick={() => router.back()} className="text-gray-400 hover:text-white">
-            &#8592;
-          </button>
-          <h1 className="text-xl font-bold">Apply for Loan</h1>
-        </div>
+    <div className="min-h-screen pb-24" style={{ background: "#06060f" }}>
+      <div className="max-w-md mx-auto">
+      {/* Header */}
+      <div className="px-5 pt-12 pb-6">
+        <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Loan Application</p>
+        <h1 className="text-2xl font-black text-white">Apply for Loan</h1>
+      </div>
 
-        {/* Tier Info */}
-        <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-6">
-          <div className="flex justify-between items-center">
+      <div className="px-5 space-y-4">
+        {/* World App notice */}
+        {!isInWorldApp && (
+          <div className="flex items-center gap-3 p-3 rounded-2xl border border-yellow-500/20"
+            style={{ background: "rgba(234,179,8,0.05)" }}>
+            <span className="text-lg">⚡</span>
+            <p className="text-xs text-yellow-400">Submitting transactions requires World App</p>
+          </div>
+        )}
+
+        {/* Tier + score card */}
+        <div className="rounded-2xl border border-white/5 overflow-hidden" style={{ background: "#0d0d18" }}>
+          <div className="flex items-center justify-between p-4">
             <div>
-              <p className="text-sm text-gray-400">Your Credit Tier</p>
-              <p className="text-lg font-bold text-teal-400">{getTierName(score)}</p>
+              <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Credit Tier</p>
+              <span
+                className="inline-block px-3 py-0.5 rounded-full text-xs font-bold tracking-widest"
+                style={{ background: tier.bg, color: tier.color }}
+              >
+                {tier.label}
+              </span>
             </div>
             <div className="text-right">
-              <p className="text-sm text-gray-400">Max Amount</p>
-              <p className="text-lg font-bold">${maxAmount.toLocaleString()}</p>
+              <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Score</p>
+              <p className="text-2xl font-black text-white">{score}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Max Limit</p>
+              <p className="text-2xl font-black text-white">${maxAmount.toLocaleString()}</p>
             </div>
           </div>
         </div>
 
-        {/* Amount Slider */}
-        <div className="mb-6">
-          <label className="block text-sm text-gray-400 mb-2">Loan Amount (USDC)</label>
-          <div className="text-3xl font-bold text-center mb-3">${amount}</div>
+        {/* Amount selector */}
+        <div className="rounded-2xl border border-white/5 p-5" style={{ background: "#0d0d18" }}>
+          <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-4">Loan Amount</p>
+          <div className="text-center mb-5">
+            <span className="text-5xl font-black text-white tracking-tight">${amount}</span>
+            <span className="text-lg text-gray-400 ml-1">USDC</span>
+          </div>
           <input
             type="range"
             min={50}
-            max={maxAmount}
+            max={Math.max(maxAmount, 50)}
             step={50}
             value={amount}
             onChange={(e) => setAmount(Number(e.target.value))}
-            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-teal-500"
+            className="w-full"
           />
-          <div className="flex justify-between text-xs text-gray-500 mt-1">
+          <div className="flex justify-between text-xs text-gray-600 mt-2">
             <span>$50</span>
-            <span>${maxAmount.toLocaleString()}</span>
+            <span>${Math.max(maxAmount, 50).toLocaleString()}</span>
           </div>
         </div>
 
-        {/* Duration Selector */}
-        <div className="mb-6">
-          <label className="block text-sm text-gray-400 mb-2">Repayment Duration</label>
-          <div className="grid grid-cols-3 gap-3">
-            {[2, 4, 8].map((weeks) => (
+        {/* Duration */}
+        <div>
+          <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-3 px-1">Repayment Term</p>
+          <div className="grid grid-cols-3 gap-2">
+            {[2, 4, 8].map((w) => (
               <button
-                key={weeks}
-                onClick={() => setDurationWeeks(weeks)}
-                className={`py-3 rounded-xl text-center transition-all ${
-                  durationWeeks === weeks
-                    ? "bg-teal-500/20 border-teal-500 border text-teal-400"
-                    : "bg-gray-800 border border-gray-700 text-gray-300 hover:border-gray-600"
-                }`}
+                key={w}
+                onClick={() => setDurationWeeks(w)}
+                className="py-3.5 rounded-2xl text-center font-semibold text-sm transition-all"
+                style={
+                  durationWeeks === w
+                    ? { background: "rgba(13,148,136,0.2)", border: "1px solid #0d9488", color: "#2dd4bf" }
+                    : { background: "#0d0d18", border: "1px solid rgba(255,255,255,0.05)", color: "#6b7280" }
+                }
               >
-                <p className="font-bold">{weeks}</p>
-                <p className="text-xs">weeks</p>
+                {w} wks
               </button>
             ))}
           </div>
         </div>
 
-        {/* Loan Calculator */}
-        <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-6 space-y-3">
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">APR</span>
-            <span className="font-medium">{apr}%</span>
+        {/* Loan breakdown */}
+        <div className="rounded-2xl border border-white/5 p-5 space-y-3" style={{ background: "#0d0d18" }}>
+          <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Loan Summary</p>
+
+          {[
+            { label: "Interest Rate (APR)", value: `${apr}%` },
+            { label: "Total Interest", value: `$${interest}` },
+            { label: "Total Repayment", value: `$${total}`, bold: true },
+          ].map((row) => (
+            <div key={row.label} className="flex justify-between items-center">
+              <span className="text-sm text-gray-500">{row.label}</span>
+              <span className={`text-sm ${row.bold ? "text-white font-bold" : "text-gray-300"}`}>{row.value}</span>
+            </div>
+          ))}
+
+          <div className="h-px bg-white/5 my-1" />
+
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-500">4 installments of</span>
+            <span className="text-base font-black" style={{ color: "#2dd4bf" }}>${installment}</span>
           </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">Total Interest</span>
-            <span className="font-medium">${interest.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">Total Repayment</span>
-            <span className="font-bold text-white">${totalRepayment.toFixed(2)}</span>
-          </div>
-          <hr className="border-gray-800" />
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">Installment (x4)</span>
-            <span className="font-bold text-teal-400">${installmentAmount.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-gray-400">Payment every</span>
-            <span className="font-medium">{paymentEveryDays.toFixed(1)} days</span>
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-500">Payment every</span>
+            <span className="text-sm text-gray-300">{paymentDays} days</span>
           </div>
         </div>
 
-        {/* Warning */}
-        <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
-          <p className="text-yellow-400/80 text-xs">
-            Defaulting will reduce your credit score and affect future borrowing.
-            Payments are due every {paymentEveryDays.toFixed(1)} days.
+        {/* Risk notice */}
+        <div className="flex items-start gap-3 p-4 rounded-2xl border border-yellow-500/10"
+          style={{ background: "rgba(234,179,8,0.04)" }}>
+          <span className="text-sm mt-0.5">⚠️</span>
+          <p className="text-xs text-yellow-400/70 leading-relaxed">
+            Defaulting reduces your credit score and affects future borrowing limits.
+            Payments are due every {paymentDays} days.
           </p>
         </div>
 
-        {/* Confirm Button */}
+        {/* Submit */}
         <button
-          onClick={handleApplyLoan}
+          onClick={handleApply}
           disabled={applying || amount < 50 || amount > maxAmount}
-          className="w-full py-4 bg-gradient-to-r from-teal-500 to-green-500 text-white font-bold rounded-xl text-lg transition-all hover:from-teal-600 hover:to-green-600 disabled:opacity-30 disabled:cursor-not-allowed"
+          className="w-full py-4 rounded-2xl text-white font-bold text-base transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          style={
+            !applying && amount >= 50 && amount <= maxAmount
+              ? { background: "linear-gradient(135deg, #0d9488, #059669)", boxShadow: "0 4px 24px rgba(13,148,136,0.3)" }
+              : { background: "#1a1f2e" }
+          }
         >
           {applying ? (
             <span className="flex items-center justify-center gap-2">
-              <span className="animate-spin">&#9696;</span> Confirming...
+              <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+              Confirming on-chain…
             </span>
-          ) : (
-            `Confirm Loan - $${amount} USDC`
-          )}
+          ) : `Confirm — $${amount} USDC`}
         </button>
 
-        {error && (
-          <p className="mt-3 text-red-400 text-sm text-center">{error}</p>
-        )}
+        {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+      </div>
       </div>
     </div>
   );

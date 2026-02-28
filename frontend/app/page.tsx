@@ -1,42 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { MiniKit, VerificationLevel } from "@worldcoin/minikit-js";
 import { API_URL } from "@/lib/contracts";
-
-const steps = [
-  { label: "Verify Identity", icon: "1" },
-  { label: "Connect Bank", icon: "2" },
-  { label: "Get Score", icon: "3" },
-  { label: "Borrow", icon: "4" },
-];
+import { useWallet } from "@/lib/useWallet";
 
 export default function Home() {
   const router = useRouter();
-  const [isInWorldApp, setIsInWorldApp] = useState(false);
+  const { isInWorldApp, connectWallet } = useWallet();
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    setIsInWorldApp(MiniKit.isInstalled());
-  }, []);
 
   const handleWorldIDVerify = async () => {
     if (!MiniKit.isInstalled()) {
       setError("Please open this app in World App");
       return;
     }
-
     setIsVerifying(true);
     setError("");
-
     try {
       const { finalPayload } = await MiniKit.commandsAsync.verify({
         action: "verify-credit",
         verification_level: VerificationLevel.Orb,
       });
-
       if (finalPayload.status === "success") {
         await fetch(`${API_URL}/api/verify/worldid`, {
           method: "POST",
@@ -48,102 +35,111 @@ export default function Home() {
         setError("Verification failed. Please try again.");
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Verification failed";
-      setError(message);
+      setError(err instanceof Error ? err.message : "Verification failed");
     } finally {
       setIsVerifying(false);
     }
   };
 
+  const handleConnectWallet = () => {
+    connectWallet();
+    router.push("/dashboard");
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-950 via-gray-900 to-gray-950">
-      <div className="max-w-md mx-auto px-4 py-12">
-        {/* Header */}
+    <div className="min-h-screen relative overflow-hidden" style={{ background: "#06060f" }}>
+      {/* Ambient background blobs */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-96 rounded-full blur-3xl opacity-10 pointer-events-none"
+        style={{ background: "radial-gradient(ellipse, #0d9488 0%, transparent 70%)" }} />
+      <div className="absolute bottom-24 right-0 w-64 h-64 rounded-full blur-3xl opacity-8 pointer-events-none"
+        style={{ background: "radial-gradient(ellipse, #7c3aed 0%, transparent 70%)" }} />
+
+      <div className="relative max-w-md mx-auto px-5 pt-16 pb-24">
+        {/* Brand */}
         <div className="text-center mb-12">
-          <div className="text-6xl mb-4">&#127757;</div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-teal-400 to-green-400 bg-clip-text text-transparent">
-            Uhuru Credit
-          </h1>
-          <p className="mt-3 text-gray-400 text-lg">
-            Credit for 1 Billion Africans
-          </p>
-          <p className="mt-1 text-gray-500 text-sm">
-            No Bank Account Required
-          </p>
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl mb-5"
+            style={{ background: "linear-gradient(135deg, #0d9488 0%, #059669 100%)", boxShadow: "0 0 40px rgba(13,148,136,0.35)" }}>
+            <span className="text-4xl">🌍</span>
+          </div>
+          <h1 className="text-4xl font-black tracking-tight text-white">Uhuru Credit</h1>
+          <p className="mt-2 text-gray-400 text-base">Credit for 1 Billion Africans</p>
+          <p className="mt-1 text-gray-600 text-sm">Uncollateralized · Privacy-First · On-Chain</p>
         </div>
 
-        {/* Not in World App banner */}
-        {!isInWorldApp && (
-          <div className="mb-6 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl text-center">
-            <p className="text-yellow-400 text-sm font-medium">
-              Please open in World App for the best experience
+        {/* Feature list */}
+        <div className="space-y-3 mb-10">
+          {[
+            { icon: "🔒", title: "Privacy-First Scoring", sub: "Chainlink CRE TEE — data never leaves the enclave" },
+            { icon: "🏦", title: "African Banking Data", sub: "50+ banks in Nigeria, Ghana, Kenya via Mono.co" },
+            { icon: "📱", title: "M-Pesa Integration", sub: "Reclaim zkTLS proofs for mobile money history" },
+          ].map((f) => (
+            <div
+              key={f.title}
+              className="flex items-center gap-4 p-4 rounded-2xl border border-white/5 card-hover"
+              style={{ background: "#0d0d18" }}
+            >
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+                style={{ background: "#14171f" }}>
+                {f.icon}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-white">{f.title}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{f.sub}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* CTA */}
+        {isInWorldApp ? (
+          <button
+            onClick={handleWorldIDVerify}
+            disabled={isVerifying}
+            className="w-full py-4 rounded-2xl text-white font-bold text-lg disabled:opacity-50 transition-all"
+            style={{ background: "linear-gradient(135deg, #0d9488 0%, #059669 100%)", boxShadow: "0 4px 24px rgba(13,148,136,0.35)" }}
+          >
+            {isVerifying ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                Verifying...
+              </span>
+            ) : "Verify with World ID"}
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={handleConnectWallet}
+              className="w-full py-4 rounded-2xl text-white font-bold text-lg transition-all"
+              style={{ background: "linear-gradient(135deg, #0d9488 0%, #059669 100%)", boxShadow: "0 4px 24px rgba(13,148,136,0.3)" }}
+            >
+              Connect Wallet
+            </button>
+            <p className="text-center text-gray-600 text-xs mt-3">
+              For World ID verification, open in World App
             </p>
-            <p className="text-yellow-400/60 text-xs mt-1">
-              MiniKit features require World App
-            </p>
-          </div>
+          </>
         )}
-
-        {/* Features */}
-        <div className="space-y-4 mb-8">
-          <div className="flex items-center gap-3 p-3 bg-gray-800/50 rounded-xl">
-            <div className="w-10 h-10 bg-teal-500/20 rounded-full flex items-center justify-center text-teal-400">&#128274;</div>
-            <div>
-              <p className="text-sm font-medium">Privacy-First Scoring</p>
-              <p className="text-xs text-gray-400">Chainlink CRE TEE protects your data</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 p-3 bg-gray-800/50 rounded-xl">
-            <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center text-green-400">&#127974;</div>
-            <div>
-              <p className="text-sm font-medium">African Banking Data</p>
-              <p className="text-xs text-gray-400">50+ Nigerian banks, Ghana, Kenya via Mono</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 p-3 bg-gray-800/50 rounded-xl">
-            <div className="w-10 h-10 bg-purple-500/20 rounded-full flex items-center justify-center text-purple-400">&#128241;</div>
-            <div>
-              <p className="text-sm font-medium">M-Pesa Integration</p>
-              <p className="text-xs text-gray-400">Reclaim zkTLS for mobile money data</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Verify Button */}
-        <button
-          onClick={handleWorldIDVerify}
-          disabled={isVerifying}
-          className="w-full py-4 bg-gradient-to-r from-teal-500 to-green-500 text-white font-bold rounded-xl text-lg transition-all hover:from-teal-600 hover:to-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isVerifying ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="animate-spin">&#9696;</span> Verifying...
-            </span>
-          ) : (
-            "Verify with World ID"
-          )}
-        </button>
-
-        {/* Skip to dashboard for development */}
-        <button
-          onClick={() => router.push("/dashboard")}
-          className="w-full mt-3 py-3 bg-gray-800 text-gray-300 font-medium rounded-xl text-sm hover:bg-gray-700 transition-colors"
-        >
-          Continue to Dashboard
-        </button>
 
         {error && (
-          <p className="mt-3 text-red-400 text-sm text-center">{error}</p>
+          <p className="mt-4 text-red-400 text-sm text-center">{error}</p>
         )}
 
-        {/* Steps */}
-        <div className="mt-10 flex justify-between">
-          {steps.map((step, i) => (
-            <div key={i} className="flex flex-col items-center gap-1">
-              <div className="w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-xs text-gray-400">
-                {step.icon}
+        {/* Steps strip */}
+        <div className="mt-12 flex items-center">
+          {["Verify", "Connect Bank", "Get Score", "Borrow"].map((step, i, arr) => (
+            <div key={step} className="flex items-center flex-1 last:flex-none">
+              <div className="flex flex-col items-center gap-1">
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-gray-500 border border-gray-700">
+                  {i + 1}
+                </div>
+                <span className="text-[9px] text-gray-600 whitespace-nowrap">{step}</span>
               </div>
-              <span className="text-[10px] text-gray-500">{step.label}</span>
+              {i < arr.length - 1 && (
+                <div className="flex-1 h-px mx-1 bg-gray-800" />
+              )}
             </div>
           ))}
         </div>

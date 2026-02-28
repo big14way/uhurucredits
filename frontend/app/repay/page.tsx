@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { MiniKit } from "@worldcoin/minikit-js";
 import { getActiveLoan, CONTRACTS, ERC20ContractABI, LoanManagerContractABI } from "@/lib/contracts";
+import { useWallet } from "@/lib/useWallet";
 
 interface LoanData {
   loanId: number;
@@ -22,6 +23,7 @@ interface LoanData {
 
 export default function Repay() {
   const router = useRouter();
+  const { address, isInWorldApp } = useWallet();
   const [loan, setLoan] = useState<LoanData | null>(null);
   const [loading, setLoading] = useState(true);
   const [repaying, setRepaying] = useState(false);
@@ -30,92 +32,64 @@ export default function Repay() {
 
   const fetchLoan = useCallback(async () => {
     try {
-      const address = MiniKit.isInstalled()
-        ? MiniKit.user?.walletAddress || "0x0000000000000000000000000000000000000000"
-        : "0x0000000000000000000000000000000000000000";
-      const loanData = await getActiveLoan(address);
-      setLoan(loanData);
+      const data = await getActiveLoan(address);
+      setLoan(data);
     } catch {
       setLoan(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [address]);
 
-  useEffect(() => {
-    fetchLoan();
-  }, [fetchLoan]);
+  useEffect(() => { fetchLoan(); }, [fetchLoan]);
 
-  // Countdown timer
   useEffect(() => {
     if (!loan || loan.status !== 0) return;
-
     const update = () => {
-      const now = Math.floor(Date.now() / 1000);
-      const diff = loan.nextPaymentDue - now;
-
-      if (diff <= 0) {
-        setCountdown("OVERDUE");
-        return;
-      }
-
-      const days = Math.floor(diff / 86400);
-      const hours = Math.floor((diff % 86400) / 3600);
-      const minutes = Math.floor((diff % 3600) / 60);
-      setCountdown(`${days}d ${hours}h ${minutes}m`);
+      const diff = loan.nextPaymentDue - Math.floor(Date.now() / 1000);
+      if (diff <= 0) { setCountdown("OVERDUE"); return; }
+      const d = Math.floor(diff / 86400);
+      const h = Math.floor((diff % 86400) / 3600);
+      const m = Math.floor((diff % 3600) / 60);
+      setCountdown(`${d}d ${h}h ${m}m`);
     };
-
     update();
-    const interval = setInterval(update, 60000);
-    return () => clearInterval(interval);
+    const id = setInterval(update, 60000);
+    return () => clearInterval(id);
   }, [loan]);
 
   const isOverdue = loan ? Math.floor(Date.now() / 1000) > loan.nextPaymentDue : false;
-  const isFullyRepaid = loan?.status === 1;
-  const progressPercent = loan ? (loan.installmentsPaid / loan.installmentsTotal) * 100 : 0;
+  const isRepaid = loan?.status === 1;
+  const progress = loan ? (loan.installmentsPaid / loan.installmentsTotal) * 100 : 0;
 
   const handleRepay = async () => {
-    if (!MiniKit.isInstalled() || !loan) {
-      setError("Please open in World App");
-      return;
-    }
-
+    if (!isInWorldApp || !loan) { setError("Please open in World App to submit transactions"); return; }
     setRepaying(true);
     setError("");
-
     try {
-      // First approve USDC spend
       await MiniKit.commandsAsync.sendTransaction({
-        transaction: [
-          {
-            address: CONTRACTS.USDC as `0x${string}`,
-            abi: ERC20ContractABI,
-            functionName: "approve",
-            args: [CONTRACTS.LOAN_MANAGER as `0x${string}`, BigInt(Math.ceil(loan.installmentAmount * 1e6))],
-          },
-        ],
+        transaction: [{
+          address: CONTRACTS.USDC as `0x${string}`,
+          abi: ERC20ContractABI,
+          functionName: "approve",
+          args: [CONTRACTS.LOAN_MANAGER as `0x${string}`, BigInt(Math.ceil(loan.installmentAmount * 1e6))],
+        }],
       });
-
-      // Then repay installment
       const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [
-          {
-            address: CONTRACTS.LOAN_MANAGER as `0x${string}`,
-            abi: LoanManagerContractABI,
-            functionName: "repayInstallment",
-            args: [BigInt(loan.loanId)],
-          },
-        ],
+        transaction: [{
+          address: CONTRACTS.LOAN_MANAGER as `0x${string}`,
+          abi: LoanManagerContractABI,
+          functionName: "repayInstallment",
+          args: [BigInt(loan.loanId)],
+        }],
       });
-
       if (finalPayload.status === "success") {
         await fetchLoan();
       } else {
         setError("Transaction failed. Please try again.");
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Transaction failed";
-      setError(message);
+      setError(err instanceof Error ? err.message : "Transaction failed");
     } finally {
       setRepaying(false);
     }
@@ -123,25 +97,31 @@ export default function Repay() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="animate-pulse text-teal-400">Loading loan...</div>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "#06060f" }}>
+        <svg className="animate-spin w-8 h-8 text-teal-500" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+        </svg>
       </div>
     );
   }
 
   if (!loan) {
     return (
-      <div className="min-h-screen bg-gray-950">
-        <div className="max-w-md mx-auto px-4 py-6">
-          <div className="flex items-center gap-3 mb-6">
-            <button onClick={() => router.back()} className="text-gray-400 hover:text-white">&#8592;</button>
-            <h1 className="text-xl font-bold">Repayment</h1>
-          </div>
-          <div className="text-center py-12">
-            <p className="text-gray-400 text-lg mb-4">No active loan found</p>
+      <div className="min-h-screen pb-24" style={{ background: "#06060f" }}>
+        <div className="px-5 pt-12 pb-6">
+          <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Repayment</p>
+          <h1 className="text-2xl font-black text-white">My Loan</h1>
+        </div>
+        <div className="px-5">
+          <div className="rounded-3xl border border-white/5 p-10 text-center" style={{ background: "#0d0d18" }}>
+            <div className="text-5xl mb-4">💳</div>
+            <p className="text-white font-bold text-lg mb-1">No Active Loan</p>
+            <p className="text-gray-500 text-sm mb-8">You have no outstanding loans right now.</p>
             <button
               onClick={() => router.push("/apply")}
-              className="px-6 py-3 bg-teal-500 text-white rounded-xl font-medium hover:bg-teal-600 transition-colors"
+              className="px-8 py-3 rounded-2xl text-white font-bold text-sm"
+              style={{ background: "linear-gradient(135deg, #0d9488, #059669)", boxShadow: "0 4px 20px rgba(13,148,136,0.3)" }}
             >
               Apply for a Loan
             </button>
@@ -151,140 +131,163 @@ export default function Repay() {
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-950">
-      <div className="max-w-md mx-auto px-4 py-6">
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <button onClick={() => router.back()} className="text-gray-400 hover:text-white">&#8592;</button>
-          <h1 className="text-xl font-bold">Repayment</h1>
+  if (isRepaid) {
+    return (
+      <div className="min-h-screen pb-24" style={{ background: "#06060f" }}>
+        <div className="px-5 pt-12 pb-6">
+          <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Repayment</p>
+          <h1 className="text-2xl font-black text-white">My Loan</h1>
         </div>
-
-        {/* Fully Repaid */}
-        {isFullyRepaid && (
-          <div className="mb-6 p-6 bg-green-500/10 border border-green-500/30 rounded-2xl text-center">
-            <div className="text-5xl mb-3">&#127881;</div>
-            <p className="text-green-400 text-xl font-bold">Loan Complete!</p>
-            <p className="text-green-400/70 text-sm mt-1">Your credit score has improved.</p>
+        <div className="px-5">
+          <div className="rounded-3xl border border-green-500/20 p-10 text-center" style={{ background: "rgba(16,185,129,0.05)" }}>
+            <div className="text-5xl mb-4">🎉</div>
+            <p className="text-green-400 font-black text-2xl mb-1">Loan Complete!</p>
+            <p className="text-green-400/60 text-sm mb-8">Your credit score has been updated.</p>
             <button
               onClick={() => router.push("/dashboard")}
-              className="mt-4 px-6 py-2 bg-green-500/20 text-green-400 rounded-lg font-medium hover:bg-green-500/30 transition-colors"
+              className="px-8 py-3 rounded-2xl font-bold text-sm"
+              style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid rgba(16,185,129,0.3)" }}
             >
               Back to Dashboard
             </button>
           </div>
-        )}
-
-        {/* Overdue Banner */}
-        {isOverdue && loan.status === 0 && (
-          <div className="mb-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl">
-            <p className="text-red-400 font-bold">Overdue! Pay now to avoid default and credit score damage</p>
-          </div>
-        )}
-
-        {/* Loan Summary */}
-        <div className="bg-gray-900 rounded-2xl p-5 border border-gray-800 mb-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-gray-400">Borrowed</p>
-              <p className="text-lg font-bold">${loan.principal.toLocaleString()}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400">Total Due</p>
-              <p className="text-lg font-bold">${loan.totalDue.toLocaleString()}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400">Repaid</p>
-              <p className="text-lg font-bold text-green-400">${loan.amountRepaid.toLocaleString()}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400">Remaining</p>
-              <p className="text-lg font-bold text-yellow-400">
-                ${(loan.totalDue - loan.amountRepaid).toLocaleString()}
-              </p>
-            </div>
-          </div>
         </div>
+      </div>
+    );
+  }
 
-        {/* Progress Bar */}
-        <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-4">
-          <div className="flex justify-between text-sm mb-2">
-            <span className="text-gray-400">Progress</span>
-            <span className="font-medium">
-              {loan.installmentsPaid}/{loan.installmentsTotal} installments
-            </span>
+  const remaining = +(loan.totalDue - loan.amountRepaid).toFixed(2);
+
+  return (
+    <div className="min-h-screen pb-24" style={{ background: "#06060f" }}>
+      <div className="max-w-md mx-auto">
+      <div className="px-5 pt-12 pb-6">
+        <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Repayment</p>
+        <h1 className="text-2xl font-black text-white">My Loan</h1>
+      </div>
+
+      <div className="px-5 space-y-4">
+        {!isInWorldApp && (
+          <div className="flex items-center gap-3 p-3 rounded-2xl border border-yellow-500/20" style={{ background: "rgba(234,179,8,0.05)" }}>
+            <span className="text-lg">⚡</span>
+            <p className="text-xs text-yellow-400">Repayments require World App</p>
           </div>
-          <div className="w-full h-3 bg-gray-700 rounded-full overflow-hidden">
+        )}
+
+        {isOverdue && (
+          <div className="flex items-center gap-3 p-4 rounded-2xl border border-red-500/30" style={{ background: "rgba(239,68,68,0.08)" }}>
+            <span className="text-xl">🚨</span>
+            <div>
+              <p className="text-red-400 font-bold text-sm">Payment Overdue</p>
+              <p className="text-red-400/60 text-xs mt-0.5">Pay now to avoid default</p>
+            </div>
+          </div>
+        )}
+
+        {/* Loan card with progress bar */}
+        <div className="rounded-3xl border border-white/5 overflow-hidden" style={{ background: "#0d0d18" }}>
+          <div className="h-1.5 w-full" style={{ background: "#1a1f2e" }}>
             <div
-              className={`h-full rounded-full transition-all duration-500 ${
-                isOverdue ? "bg-red-500" : "bg-gradient-to-r from-teal-500 to-green-500"
-              }`}
-              style={{ width: `${progressPercent}%` }}
+              className="h-full rounded-full transition-all duration-700"
+              style={{
+                width: `${progress}%`,
+                background: isOverdue ? "linear-gradient(90deg,#ef4444,#f87171)" : "linear-gradient(90deg,#0d9488,#10b981)",
+              }}
             />
+          </div>
+          <div className="p-5">
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              {[
+                { label: "Borrowed",  value: `$${loan.principal.toLocaleString()}`,      color: "text-white" },
+                { label: "Total Due", value: `$${loan.totalDue.toLocaleString()}`,        color: "text-white" },
+                { label: "Repaid",    value: `$${loan.amountRepaid.toLocaleString()}`,    color: "text-green-400" },
+                { label: "Remaining", value: `$${remaining.toLocaleString()}`,            color: isOverdue ? "text-red-400" : "text-yellow-400" },
+              ].map((item) => (
+                <div key={item.label} className="rounded-2xl p-3" style={{ background: "#14171f" }}>
+                  <p className="text-[10px] text-gray-600 uppercase tracking-widest mb-1">{item.label}</p>
+                  <p className={`text-lg font-black ${item.color}`}>{item.value}</p>
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-600">Progress</span>
+              <span className="text-gray-400 font-medium">{loan.installmentsPaid}/{loan.installmentsTotal} installments</span>
+            </div>
           </div>
         </div>
 
         {/* Countdown */}
-        {loan.status === 0 && (
-          <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-4 text-center">
-            <p className="text-xs text-gray-400 mb-1">Next payment due in</p>
-            <p className={`text-2xl font-bold ${isOverdue ? "text-red-400" : "text-white"}`}>
-              {countdown}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              Installment: ${loan.installmentAmount.toFixed(2)} USDC
-            </p>
-          </div>
-        )}
+        <div className="rounded-2xl border border-white/5 p-5 text-center" style={{ background: "#0d0d18" }}>
+          <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-2">Next Payment Due</p>
+          <p className={`text-3xl font-black tracking-tight ${isOverdue ? "text-red-400" : "text-white"}`}>
+            {countdown || "—"}
+          </p>
+          <p className="text-gray-600 text-xs mt-2">
+            Amount: <span className="text-white font-semibold">${loan.installmentAmount.toFixed(2)} USDC</span>
+          </p>
+        </div>
 
-        {/* Payment History */}
-        <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-6">
-          <p className="text-sm text-gray-400 mb-3">Payment History</p>
-          <div className="space-y-2">
-            {Array.from({ length: loan.installmentsTotal }).map((_, i) => (
-              <div key={i} className="flex items-center justify-between py-2 border-b border-gray-800 last:border-0">
-                <div className="flex items-center gap-2">
-                  <span className={i < loan.installmentsPaid ? "text-green-400" : "text-gray-600"}>
-                    {i < loan.installmentsPaid ? "&#9989;" : "&#9898;"}
-                  </span>
-                  <span className="text-sm">Installment {i + 1}</span>
+        {/* Timeline */}
+        <div className="rounded-2xl border border-white/5 p-5" style={{ background: "#0d0d18" }}>
+          <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-4">Payment Timeline</p>
+          <div className="space-y-3">
+            {Array.from({ length: loan.installmentsTotal }).map((_, i) => {
+              const paid = i < loan.installmentsPaid;
+              const current = i === loan.installmentsPaid && loan.status === 0;
+              return (
+                <div key={i} className="flex items-center gap-3">
+                  <div
+                    className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
+                    style={{
+                      background: paid ? "rgba(16,185,129,0.15)" : current ? "rgba(13,148,136,0.15)" : "#14171f",
+                      border: `1px solid ${paid ? "#10b981" : current ? "#0d9488" : "#1f2937"}`,
+                    }}
+                  >
+                    {paid
+                      ? <span className="text-xs text-green-400">✓</span>
+                      : <span className="text-[10px]" style={{ color: current ? "#2dd4bf" : "#374151" }}>{i + 1}</span>
+                    }
+                  </div>
+                  <div className="flex-1 flex items-center justify-between">
+                    <span className={`text-sm ${paid ? "text-gray-500" : current ? "text-white font-semibold" : "text-gray-600"}`}>
+                      Installment {i + 1}
+                    </span>
+                    <span className={`text-sm font-semibold ${paid ? "text-green-400" : current ? "text-teal-400" : "text-gray-700"}`}>
+                      {paid ? `$${loan.installmentAmount.toFixed(2)}` : current ? `$${loan.installmentAmount.toFixed(2)}` : "—"}
+                    </span>
+                  </div>
                 </div>
-                <span className="text-sm font-medium">
-                  {i < loan.installmentsPaid ? (
-                    <span className="text-green-400">${loan.installmentAmount.toFixed(2)}</span>
-                  ) : (
-                    <span className="text-gray-500">Pending</span>
-                  )}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
-        {/* Pay Button */}
+        {/* Pay CTA */}
         {loan.status === 0 && loan.installmentsPaid < loan.installmentsTotal && (
           <button
             onClick={handleRepay}
             disabled={repaying}
-            className={`w-full py-4 font-bold rounded-xl text-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+            className="w-full py-4 rounded-2xl text-white font-bold text-base transition-all disabled:opacity-40"
+            style={
               isOverdue
-                ? "bg-red-500 text-white hover:bg-red-600"
-                : "bg-gradient-to-r from-teal-500 to-green-500 text-white hover:from-teal-600 hover:to-green-600"
-            }`}
+                ? { background: "linear-gradient(135deg,#dc2626,#ef4444)", boxShadow: "0 4px 24px rgba(239,68,68,0.35)" }
+                : { background: "linear-gradient(135deg,#0d9488,#059669)", boxShadow: "0 4px 24px rgba(13,148,136,0.3)" }
+            }
           >
             {repaying ? (
               <span className="flex items-center justify-center gap-2">
-                <span className="animate-spin">&#9696;</span> Processing...
+                <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                Processing…
               </span>
-            ) : (
-              `Pay Installment - $${loan.installmentAmount.toFixed(2)} USDC`
-            )}
+            ) : `Pay $${loan.installmentAmount.toFixed(2)} USDC`}
           </button>
         )}
 
-        {error && (
-          <p className="mt-3 text-red-400 text-sm text-center">{error}</p>
-        )}
+        {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+      </div>
       </div>
     </div>
   );
