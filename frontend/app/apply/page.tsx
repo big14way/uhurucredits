@@ -25,6 +25,7 @@ export default function Apply() {
   const { address, isInWorldApp } = useWallet();
   const [score, setScore] = useState(0);
   const [maxAmount, setMaxAmount] = useState(0);
+  const [worldIdVerified, setWorldIdVerified] = useState(false);
   const [amount, setAmount] = useState(50);
   const [durationWeeks, setDurationWeeks] = useState(4);
   const [loading, setLoading] = useState(true);
@@ -37,6 +38,7 @@ export default function Apply() {
       const data = await res.json();
       setScore(data.score);
       setMaxAmount(data.maxLoanAmount);
+      setWorldIdVerified(data.worldIdVerified || false);
       if (data.maxLoanAmount > 0) setAmount(Math.min(50, data.maxLoanAmount));
     } catch {
       // keep defaults
@@ -105,10 +107,10 @@ export default function Apply() {
               <p className="text-gray-500 text-sm mb-6">Complete these steps to unlock borrowing</p>
               <div className="space-y-3 text-left">
                 {[
-                  { done: score > 0, icon: "🌍", label: "Verify identity with World ID" },
-                  { done: false,      icon: "🏦", label: "Connect a bank account via Mono" },
-                  { done: false,      icon: "📱", label: "Link M-Pesa history via Reclaim" },
-                  { done: false,      icon: "📊", label: "Request a credit evaluation" },
+                  { done: worldIdVerified,  icon: "🌍", label: "Verify identity with World ID" },
+                  { done: false,            icon: "🏦", label: "Connect a bank account via Mono" },
+                  { done: false,            icon: "📱", label: "Link M-Pesa history via Reclaim" },
+                  { done: score > 0,        icon: "📊", label: "Request a credit evaluation" },
                 ].map((step) => (
                   <div key={step.label} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: "#14171f" }}>
                     <span className="text-base">{step.done ? "✅" : step.icon}</span>

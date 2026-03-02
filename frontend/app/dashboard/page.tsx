@@ -75,13 +75,9 @@ export default function Dashboard() {
       });
       if (!res.ok) throw new Error("Request failed");
       setEvalStatus("submitted");
-      let attempts = 0;
-      const poll = setInterval(async () => {
-        attempts++;
-        await fetchProfile(address);
-        if (attempts >= 20) { clearInterval(poll); setEvaluating(false); }
-      }, 3000);
-      setTimeout(() => { clearInterval(poll); setEvaluating(false); }, 60000);
+      // Refresh immediately — backend now returns score synchronously
+      await fetchProfile(address);
+      setEvaluating(false);
     } catch {
       setEvalStatus("error");
       setEvaluating(false);
