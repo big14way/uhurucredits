@@ -8,7 +8,7 @@ import { useWallet } from "@/lib/useWallet";
 
 export default function Home() {
   const router = useRouter();
-  const { isInWorldApp, hasWallet, connectWallet } = useWallet();
+  const { address, isInWorldApp, hasWallet, connectWallet } = useWallet();
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState("");
 
@@ -29,7 +29,7 @@ export default function Home() {
         await fetch(`${API_URL}/api/verify/worldid`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(finalPayload),
+          body: JSON.stringify({ ...finalPayload, walletAddress: address }),
         });
         router.push("/dashboard");
       } else {

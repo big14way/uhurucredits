@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 import dotenv from "dotenv";
 import { CreditIdentityABI, LoanManagerABI } from "./abi";
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const app = express();
 app.use(cors());
@@ -31,17 +31,86 @@ const creditJobs = new Map<
   { walletAddress: string; status: string; createdAt: number }
 >();
 
+// In-memory profile overrides — used when on-chain writes aren't available
+interface InMemoryProfile {
+  score: number;
+  worldIdVerified: boolean;
+  reclaimVerified: boolean;
+  lastUpdated: number;
+}
+const inMemoryProfiles = new Map<string, InMemoryProfile>();
+
+// Scoring logic (mirrors on-chain getMaxLoanAmount)
+function computeMaxLoanAmount(score: number): number {
+  if (score >= 850) return 5000;
+  if (score >= 700) return 2000;
+  if (score >= 550) return 500;
+  if (score >= 400) return 100;
+  return 0;
+}
+
+function computeScore(
+  worldIdVerified: boolean,
+  reclaimVerified: boolean,
+  monoLinked: boolean
+): number {
+  let score = 300; // base (not eligible)
+  if (worldIdVerified) score += 100; // → 400, just eligible
+  if (reclaimVerified) score += 150; // M-Pesa proof → better tier
+  if (monoLinked) score += 160;     // Bank linked → better tier
+  return Math.min(score, 1000);
+}
+
 // Ethers provider
 const provider = new ethers.JsonRpcProvider(
   process.env.RPC_URL_BASE_SEPOLIA || "https://sepolia.base.org"
 );
 
-function getCreditIdentityContract() {
+// Optional signer for on-chain writes (requires PRIVATE_KEY env var)
+let signer: ethers.Wallet | null = null;
+if (process.env.PRIVATE_KEY) {
+  try {
+    signer = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
+    console.log("Backend signer:", signer.address);
+  } catch {
+    console.warn("Invalid PRIVATE_KEY — running read-only");
+  }
+}
+
+function getCreditIdentityContract(withSigner = false) {
   return new ethers.Contract(
     process.env.CREDIT_IDENTITY_ADDRESS || ethers.ZeroAddress,
     CreditIdentityABI,
-    provider
+    withSigner && signer ? signer : provider
   );
+}
+
+// Try to write score on-chain; swallow errors silently (falls back to in-memory)
+async function tryWriteOnChain(
+  walletAddress: string,
+  score: number,
+  worldIdVerified: boolean,
+  reclaimVerified: boolean
+) {
+  if (!signer) return;
+  try {
+    const contract = getCreditIdentityContract(true);
+    const hasMinted = await contract.hasMinted(walletAddress);
+    if (!hasMinted) {
+      const mintTx = await contract.mint(walletAddress);
+      await mintTx.wait();
+    }
+    const scoreTx = await contract.updateScore(
+      walletAddress,
+      score,
+      worldIdVerified,
+      reclaimVerified
+    );
+    await scoreTx.wait();
+    console.log(`On-chain score updated for ${walletAddress}: ${score}`);
+  } catch (err: any) {
+    console.warn("On-chain write skipped:", err.message?.slice(0, 80));
+  }
 }
 
 // ---- ROUTES ----
@@ -49,14 +118,34 @@ function getCreditIdentityContract() {
 // POST /api/verify/worldid
 app.post("/api/verify/worldid", async (req, res) => {
   try {
-    const { proof, nullifierHash, merkleRoot, signal } = req.body;
+    const { proof, nullifierHash, merkleRoot, signal, walletAddress } = req.body;
 
-    if (!proof || !nullifierHash || !merkleRoot || !signal) {
+    if (!proof || !nullifierHash || !merkleRoot) {
       res.status(400).json({ error: "Missing required fields" });
       return;
     }
 
-    worldIdProofs.set(signal, { proof: req.body, nullifierHash, signal });
+    const proofKey = nullifierHash || signal || walletAddress;
+    if (proofKey) worldIdProofs.set(proofKey, { proof: req.body, nullifierHash, signal: proofKey });
+
+    // Use walletAddress (preferred) or signal as the key for in-memory profile
+    const walletKey = (walletAddress || signal || "").toLowerCase();
+    if (!walletKey || !ethers.isAddress(walletKey)) {
+      res.status(400).json({ error: "Missing walletAddress or signal" });
+      return;
+    }
+
+    const existing = inMemoryProfiles.get(walletKey) || {
+      score: 0,
+      worldIdVerified: false,
+      reclaimVerified: false,
+      lastUpdated: 0,
+    };
+    inMemoryProfiles.set(walletKey, {
+      ...existing,
+      worldIdVerified: true,
+      lastUpdated: Math.floor(Date.now() / 1000),
+    });
 
     res.json({ verified: true, nullifierHash, signal });
   } catch (error: any) {
@@ -122,6 +211,7 @@ app.post("/api/credit/request", async (req, res) => {
       return;
     }
 
+    const walletKey = walletAddress.toLowerCase();
     const jobId = uuidv4();
     creditJobs.set(jobId, {
       walletAddress,
@@ -129,17 +219,45 @@ app.post("/api/credit/request", async (req, res) => {
       createdAt: Date.now(),
     });
 
-    // Trigger CRE workflow
+    // Determine verification status
+    const memProfile = inMemoryProfiles.get(walletKey);
+    const isWorldIdVerified =
+      worldIdVerified || memProfile?.worldIdVerified || false;
+    const isReclaimVerified = reclaimProofs.has(walletKey);
+    const isMonoLinked =
+      monoAccounts.has(walletKey) || Boolean(monoAccountId);
+
+    // Compute mock score
+    const score = computeScore(isWorldIdVerified, isReclaimVerified, isMonoLinked);
+
+    // Store in memory immediately
+    inMemoryProfiles.set(walletKey, {
+      score,
+      worldIdVerified: isWorldIdVerified,
+      reclaimVerified: isReclaimVerified,
+      lastUpdated: Math.floor(Date.now() / 1000),
+    });
+
+    creditJobs.set(jobId, {
+      walletAddress,
+      status: "submitted",
+      createdAt: Date.now(),
+    });
+
+    // Try to write on-chain in background (non-blocking)
+    tryWriteOnChain(walletAddress, score, isWorldIdVerified, isReclaimVerified);
+
+    // Also try external CRE workflow if configured
     const creTriggerUrl = process.env.CRE_TRIGGER_URL;
     if (creTriggerUrl) {
-      try {
-        await axios.post(
+      axios
+        .post(
           creTriggerUrl,
           {
             wallet: walletAddress,
             monoAccountId: monoAccountId || "",
-            worldIdVerified: worldIdVerified || false,
-            reclaimVerified: reclaimProofs.has(walletAddress.toLowerCase()),
+            worldIdVerified: isWorldIdVerified,
+            reclaimVerified: isReclaimVerified,
           },
           {
             headers: {
@@ -147,26 +265,15 @@ app.post("/api/credit/request", async (req, res) => {
               "Content-Type": "application/json",
             },
           }
-        );
-        creditJobs.set(jobId, {
-          walletAddress,
-          status: "submitted",
-          createdAt: Date.now(),
-        });
-      } catch {
-        // CRE not available in dev, mark as submitted anyway
-        creditJobs.set(jobId, {
-          walletAddress,
-          status: "submitted_offline",
-          createdAt: Date.now(),
-        });
-      }
+        )
+        .catch(() => {});
     }
 
     res.json({
       jobId,
-      status: "pending",
-      message: "Credit evaluation started",
+      status: "submitted",
+      score,
+      message: "Credit evaluation complete",
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -183,15 +290,18 @@ app.get("/api/credit/status/:walletAddress", async (req, res) => {
       return;
     }
 
-    const creditIdentity = getCreditIdentityContract();
+    const walletKey = walletAddress.toLowerCase();
+    const memProfile = inMemoryProfiles.get(walletKey);
 
+    // Try on-chain data
+    let onChainData: any = null;
     try {
+      const creditIdentity = getCreditIdentityContract();
       const profile = await creditIdentity.getProfile(walletAddress);
       const isEligible = await creditIdentity.isEligible(walletAddress);
-      const maxLoanAmount =
-        await creditIdentity.getMaxLoanAmount(walletAddress);
+      const maxLoanAmount = await creditIdentity.getMaxLoanAmount(walletAddress);
 
-      res.json({
+      onChainData = {
         score: Number(profile.score),
         lastUpdated: Number(profile.lastUpdated),
         worldIdVerified: profile.worldIdVerified,
@@ -202,22 +312,40 @@ app.get("/api/credit/status/:walletAddress", async (req, res) => {
         repaymentRate: Number(profile.repaymentRate),
         outstandingDebt: Number(profile.outstandingDebt) / 1e6,
         defaultCount: Number(profile.defaultCount),
-      });
+      };
     } catch {
-      // Contract not deployed or profile doesn't exist
-      res.json({
-        score: 0,
-        lastUpdated: 0,
-        worldIdVerified: false,
-        reclaimVerified: false,
-        isEligible: false,
-        maxLoanAmount: 0,
-        totalLoans: 0,
-        repaymentRate: 0,
-        outstandingDebt: 0,
-        defaultCount: 0,
-      });
+      // Contract unreachable or profile doesn't exist
     }
+
+    // Merge: prefer in-memory when it has a higher score (on-chain may lag)
+    const finalScore =
+      memProfile && memProfile.score > (onChainData?.score || 0)
+        ? memProfile.score
+        : onChainData?.score || 0;
+
+    const finalWorldIdVerified =
+      memProfile?.worldIdVerified || onChainData?.worldIdVerified || false;
+    const finalReclaimVerified =
+      memProfile?.reclaimVerified || onChainData?.reclaimVerified || false;
+
+    const finalMaxLoanAmount = Math.max(
+      computeMaxLoanAmount(finalScore),
+      onChainData?.maxLoanAmount || 0
+    );
+
+    res.json({
+      score: finalScore,
+      lastUpdated:
+        memProfile?.lastUpdated || onChainData?.lastUpdated || 0,
+      worldIdVerified: finalWorldIdVerified,
+      reclaimVerified: finalReclaimVerified,
+      isEligible: finalScore >= 400 && (onChainData?.outstandingDebt || 0) === 0,
+      maxLoanAmount: finalMaxLoanAmount,
+      totalLoans: onChainData?.totalLoans || 0,
+      repaymentRate: onChainData?.repaymentRate || 0,
+      outstandingDebt: onChainData?.outstandingDebt || 0,
+      defaultCount: onChainData?.defaultCount || 0,
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

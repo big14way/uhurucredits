@@ -1,5 +1,31 @@
 export const CreditIdentityABI = [
   {
+    inputs: [{ name: "to", type: "address" }],
+    name: "mint",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      { name: "wallet", type: "address" },
+      { name: "score", type: "uint16" },
+      { name: "worldIdVerified", type: "bool" },
+      { name: "reclaimVerified", type: "bool" },
+    ],
+    name: "updateScore",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [{ name: "wallet", type: "address" }],
+    name: "hasMinted",
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
     inputs: [{ name: "wallet", type: "address" }],
     name: "getProfile",
     outputs: [
