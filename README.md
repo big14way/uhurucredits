@@ -2,7 +2,7 @@
 
 > **The first on-chain uncollateralized BNPL (Buy Now Pay Later) credit protocol for Africa.**
 
-Built for the **Chainlink Convergence Hackathon 2026** | [Demo Video](#) | [Live App](#)
+Built for the **Chainlink Convergence Hackathon 2026** | [Demo Video](#) | [Live App](https://uhuru-credit.vercel.app)
 
 ---
 
@@ -264,7 +264,8 @@ Uhuru Credit generates revenue through multiple sustainable streams:
 - [x] 7 smart contracts with full test suite (25 tests passing)
 - [x] CRE credit scoring workflow with Mono.co integration
 - [x] Official CRE CLI workflow simulation passing (Score: 400)
-- [x] World Mini App frontend (4 pages)
+- [x] World Mini App frontend (4 pages) — deployed at https://uhuru-credit.vercel.app
+- [x] World ID device-level verification integrated and tested
 - [x] Backend API with Reclaim Protocol M-Pesa verification
 - [x] CCIP cross-chain score sync (Base <-> Arbitrum)
 - [ ] Mainnet deployment on Base
@@ -289,6 +290,79 @@ Uhuru Credit generates revenue through multiple sustainable streams:
 - [ ] Traditional finance partnerships (banks, MFIs using on-chain credit data)
 - [ ] Savings products and credit builder tools
 - [ ] Insurance integration for loan default protection
+
+## Live Demo
+
+| Resource | URL |
+|----------|-----|
+| **Live App (Vercel)** | https://uhuru-credit.vercel.app |
+| **World App Mini App ID** | `app_364ae6dd4b355aa0e8fcbaf1ede63d04` |
+| **Base Sepolia Explorer** | https://sepolia.basescan.org |
+| **Arbitrum Sepolia Explorer** | https://sepolia.arbiscan.io |
+
+### End-to-End Testing Guide
+
+**Prerequisites:** World App installed on your phone (iOS/Android)
+
+#### Step 1 — Open in World App
+1. Go to **[developer.worldcoin.org](https://developer.worldcoin.org)** → your app → Mini App → Basic
+2. Set App URL to `https://uhuru-credit.vercel.app` and save
+3. Scan the **Developer Preview QR code** with World App on your phone
+4. The Uhuru Credit home screen appears inside World App
+
+**Expected:** Dark home screen with "Uhuru Credit", 3 feature cards, and "Verify with World ID" button
+
+#### Step 2 — Verify Identity
+1. Tap **"Verify with World ID"**
+2. World App shows a verification prompt — confirm it
+3. App calls backend, records World ID verification
+4. Redirected to **Dashboard**
+
+**Expected:** Dashboard loads with your wallet address, score card showing 0, and "World ID" verified badge
+
+#### Step 3 — Request Credit Evaluation
+1. On Dashboard, tap **"Request Credit Evaluation"**
+2. Button subtitle changes to **"Submitted — score updates in ~60s"** with a green ✓
+3. The backend triggers Chainlink CRE scoring workflow
+4. After ~60s, score refreshes (base score ~400 for World ID verified users)
+
+**Expected:** Score card animates to 400+, tier shows "MICRO" or higher, Apply button unlocks
+
+#### Step 4 — Apply for a Loan
+1. Tap **"Apply for a Loan →"** on the dashboard (unlocked once score ≥ 400)
+2. Adjust loan amount with the slider ($50–$100 for MICRO tier)
+3. Select repayment term (2, 4, or 8 weeks)
+4. Review the loan summary (APR, total repayment, installment amount)
+5. Tap **"Confirm — $XX USDC"**
+6. World App shows transaction confirmation — approve it
+
+**Expected:** Transaction signed via MiniKit, redirected to Repay page showing active loan
+
+#### Step 5 — Repay an Installment
+1. On Repay page, see loan details: borrowed, total due, progress timeline
+2. Countdown shows days until next payment
+3. Tap **"Pay $X.XX USDC"**
+4. World App prompts USDC approval + repayment transaction — approve both
+5. Page refreshes showing 1/4 installments paid, progress bar advances
+
+**Expected:** Green progress bar fills 25%, installment marked ✓ in timeline
+
+#### Step 6 — Check Score Improvement
+1. After full repayment, navigate to **Dashboard**
+2. Request another Credit Evaluation
+3. Score increases due to repayment history
+
+**Expected:** Score increases by ~50-100 points, tier may upgrade
+
+---
+
+### Browser-Only Testing (No World App)
+Open https://uhuru-credit.vercel.app in any browser:
+- Connect a MetaMask/browser wallet
+- Dashboard shows read-only credit profile
+- Apply/Repay require World App (transactions are gas-free via MiniKit)
+
+---
 
 ## Local Setup
 

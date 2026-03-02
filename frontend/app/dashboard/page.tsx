@@ -25,6 +25,8 @@ export default function Dashboard() {
   const [profile, setProfile] = useState<CreditProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [evaluating, setEvaluating] = useState(false);
+  const [evalStatus, setEvalStatus] = useState<"idle" | "submitted" | "error">("idle");
+  const [bankError, setBankError] = useState("");
 
   const fetchProfile = useCallback(async (addr: string) => {
     try {
@@ -48,31 +50,40 @@ export default function Dashboard() {
   }, [address, hasWallet, fetchProfile]);
 
   const handleConnectBank = async () => {
+    setBankError("");
     try {
       const res = await fetch(`${API_URL}/api/mono/auth-url`);
-      const { url } = await res.json();
-      window.open(url, "_blank");
+      const data = await res.json();
+      if (!data.url) {
+        setBankError("Bank connection is not configured yet. Coming soon!");
+        return;
+      }
+      window.open(data.url, "_blank");
     } catch {
-      alert("Failed to open bank connection");
+      setBankError("Failed to reach the server. Please try again.");
     }
   };
 
   const handleTriggerEvaluation = async () => {
     setEvaluating(true);
+    setEvalStatus("idle");
     try {
-      await fetch(`${API_URL}/api/credit/request`, {
+      const res = await fetch(`${API_URL}/api/credit/request`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ walletAddress: address, monoAccountId: "", worldIdVerified: profile?.worldIdVerified || false }),
       });
+      if (!res.ok) throw new Error("Request failed");
+      setEvalStatus("submitted");
       let attempts = 0;
       const poll = setInterval(async () => {
         attempts++;
         await fetchProfile(address);
-        if (attempts >= 20) clearInterval(poll);
+        if (attempts >= 20) { clearInterval(poll); setEvaluating(false); }
       }, 3000);
       setTimeout(() => { clearInterval(poll); setEvaluating(false); }, 60000);
     } catch {
+      setEvalStatus("error");
       setEvaluating(false);
     }
   };
@@ -223,6 +234,13 @@ export default function Dashboard() {
             <span className="text-gray-700 ml-auto text-xl shrink-0">›</span>
           </button>
 
+          {bankError && (
+            <div className="flex items-start gap-2 px-1">
+              <span className="text-yellow-400 text-xs mt-0.5">⚠</span>
+              <p className="text-yellow-400/80 text-xs leading-relaxed">{bankError}</p>
+            </div>
+          )}
+
           <button
             onClick={handleTriggerEvaluation}
             disabled={evaluating}
@@ -232,9 +250,16 @@ export default function Dashboard() {
             <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0" style={{ background: "#14171f" }}>📊</div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-white">Request Credit Evaluation</p>
-              <p className="text-xs text-gray-500 mt-0.5">Privately computed in Chainlink TEE</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {evalStatus === "submitted" ? "Submitted — score updates in ~60s" : evalStatus === "error" ? "Request failed — try again" : "Privately computed in Chainlink TEE"}
+              </p>
             </div>
-            <span className="text-gray-700 ml-auto text-xl shrink-0">›</span>
+            {evalStatus === "submitted"
+              ? <span className="text-green-400 ml-auto text-sm shrink-0">✓</span>
+              : evalStatus === "error"
+              ? <span className="text-red-400 ml-auto text-sm shrink-0">✕</span>
+              : <span className="text-gray-700 ml-auto text-xl shrink-0">›</span>
+            }
           </button>
         </div>
 

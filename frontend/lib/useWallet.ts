@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { MiniKit } from "@worldcoin/minikit-js";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { injected } from "wagmi/connectors";
@@ -11,8 +12,20 @@ export function useWallet() {
   const { connect } = useConnect();
   const { disconnect } = useDisconnect();
 
-  const isInWorldApp = typeof window !== "undefined" && MiniKit.isInstalled();
-  const miniKitAddress = isInWorldApp ? MiniKit.user?.walletAddress : undefined;
+  const [isInWorldApp, setIsInWorldApp] = useState(false);
+  const [miniKitAddress, setMiniKitAddress] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    try {
+      const installed = MiniKit.isInstalled();
+      setIsInWorldApp(installed);
+      if (installed) {
+        // Try to get wallet address; may be available immediately or after walletAuth
+        const addr = MiniKit.user?.walletAddress;
+        if (addr) setMiniKitAddress(addr);
+      }
+    } catch { setIsInWorldApp(false); }
+  }, []);
 
   // MiniKit takes priority; otherwise use wagmi
   const address: string = miniKitAddress || wagmiAddress || ZERO_ADDRESS;

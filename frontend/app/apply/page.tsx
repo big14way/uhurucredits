@@ -90,6 +90,47 @@ export default function Apply() {
     );
   }
 
+  if (maxAmount === 0) {
+    return (
+      <div className="min-h-screen pb-24" style={{ background: "#06060f" }}>
+        <div className="max-w-md mx-auto">
+          <div className="px-5 pt-12 pb-6">
+            <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Loan Application</p>
+            <h1 className="text-2xl font-black text-white">Apply for Loan</h1>
+          </div>
+          <div className="px-5 space-y-4">
+            <div className="rounded-3xl border border-white/5 p-8 text-center" style={{ background: "#0d0d18" }}>
+              <div className="text-5xl mb-4">📊</div>
+              <p className="text-white font-bold text-lg mb-1">No Credit Score Yet</p>
+              <p className="text-gray-500 text-sm mb-6">Complete these steps to unlock borrowing</p>
+              <div className="space-y-3 text-left">
+                {[
+                  { done: score > 0, icon: "🌍", label: "Verify identity with World ID" },
+                  { done: false,      icon: "🏦", label: "Connect a bank account via Mono" },
+                  { done: false,      icon: "📱", label: "Link M-Pesa history via Reclaim" },
+                  { done: false,      icon: "📊", label: "Request a credit evaluation" },
+                ].map((step) => (
+                  <div key={step.label} className="flex items-center gap-3 p-3 rounded-2xl" style={{ background: "#14171f" }}>
+                    <span className="text-base">{step.done ? "✅" : step.icon}</span>
+                    <span className={`text-sm ${step.done ? "text-green-400" : "text-gray-400"}`}>{step.label}</span>
+                    {step.done && <span className="ml-auto text-green-400 text-xs font-semibold">Done</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <button
+              onClick={() => router.push("/dashboard")}
+              className="w-full py-4 rounded-2xl text-white font-bold text-base"
+              style={{ background: "linear-gradient(135deg, #0d9488, #059669)", boxShadow: "0 4px 24px rgba(13,148,136,0.3)" }}
+            >
+              Go to Dashboard →
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen pb-24" style={{ background: "#06060f" }}>
       <div className="max-w-md mx-auto">

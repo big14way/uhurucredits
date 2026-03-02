@@ -8,12 +8,13 @@ import { useWallet } from "@/lib/useWallet";
 
 export default function Home() {
   const router = useRouter();
-  const { isInWorldApp, connectWallet } = useWallet();
+  const { isInWorldApp, hasWallet, connectWallet } = useWallet();
   const [isVerifying, setIsVerifying] = useState(false);
   const [error, setError] = useState("");
 
   const handleWorldIDVerify = async () => {
-    if (!MiniKit.isInstalled()) {
+    const installed = (() => { try { return MiniKit.isInstalled(); } catch { return false; } })();
+    if (!installed) {
       setError("Please open this app in World App");
       return;
     }
@@ -22,7 +23,7 @@ export default function Home() {
     try {
       const { finalPayload } = await MiniKit.commandsAsync.verify({
         action: "verify-credit",
-        verification_level: VerificationLevel.Orb,
+        verification_level: VerificationLevel.Device,
       });
       if (finalPayload.status === "success") {
         await fetch(`${API_URL}/api/verify/worldid`, {
@@ -66,19 +67,33 @@ export default function Home() {
           <p className="mt-1 text-gray-600 text-sm">Uncollateralized · Privacy-First · On-Chain</p>
         </div>
 
+        {/* World App banner for browser users */}
+        {!isInWorldApp && !hasWallet && (
+          <div className="flex items-start gap-3 p-4 rounded-2xl border border-blue-500/20 mb-6"
+            style={{ background: "rgba(59,130,246,0.05)" }}>
+            <span className="text-xl mt-0.5">📱</span>
+            <div>
+              <p className="text-blue-300 font-semibold text-sm">World ID requires World App</p>
+              <p className="text-blue-400/60 text-xs mt-1 leading-relaxed">
+                Download the <span className="text-blue-300 font-medium">World App</span> on your phone to verify your identity and get gas-free transactions. You can still connect a browser wallet below to explore.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Feature list */}
         <div className="space-y-3 mb-10">
           {[
             { icon: "🔒", title: "Privacy-First Scoring", sub: "Chainlink CRE TEE — data never leaves the enclave" },
             { icon: "🏦", title: "African Banking Data", sub: "50+ banks in Nigeria, Ghana, Kenya via Mono.co" },
-            { icon: "📱", title: "M-Pesa Integration", sub: "Reclaim zkTLS proofs for mobile money history" },
+            { icon: "🌍", title: "World ID Verified", sub: "One person, one account — device-level proof of humanity" },
           ].map((f) => (
             <div
               key={f.title}
               className="flex items-center gap-4 p-4 rounded-2xl border border-white/5 card-hover"
               style={{ background: "#0d0d18" }}
             >
-              <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0"
                 style={{ background: "#14171f" }}>
                 {f.icon}
               </div>
@@ -108,6 +123,19 @@ export default function Home() {
               </span>
             ) : "Verify with World ID"}
           </button>
+        ) : hasWallet ? (
+          <>
+            <button
+              onClick={() => router.push("/dashboard")}
+              className="w-full py-4 rounded-2xl text-white font-bold text-lg transition-all"
+              style={{ background: "linear-gradient(135deg, #0d9488 0%, #059669 100%)", boxShadow: "0 4px 24px rgba(13,148,136,0.3)" }}
+            >
+              Go to Dashboard →
+            </button>
+            <p className="text-center text-gray-600 text-xs mt-3">
+              For World ID verification, open in World App
+            </p>
+          </>
         ) : (
           <>
             <button
