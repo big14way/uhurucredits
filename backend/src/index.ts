@@ -5,9 +5,12 @@ import axios from "axios";
 import { ethers } from "ethers";
 import { v4 as uuidv4 } from "uuid";
 import dotenv from "dotenv";
+import fs from "fs";
+import path from "path";
 import { CreditIdentityABI, LoanManagerABI } from "./abi";
 
-dotenv.config({ override: true });
+// Load .env from the backend root regardless of working directory
+dotenv.config({ path: path.join(__dirname, "..", ".env"), override: true });
 
 const app = express();
 app.use(cors());
@@ -31,14 +34,40 @@ const creditJobs = new Map<
   { walletAddress: string; status: string; createdAt: number }
 >();
 
-// In-memory profile overrides — used when on-chain writes aren't available
+// Persistent profile store — survives backend restarts
 interface InMemoryProfile {
   score: number;
   worldIdVerified: boolean;
   reclaimVerified: boolean;
   lastUpdated: number;
 }
-const inMemoryProfiles = new Map<string, InMemoryProfile>();
+
+const DATA_FILE = path.join(__dirname, "..", "data", "profiles.json");
+
+function loadProfiles(): Map<string, InMemoryProfile> {
+  try {
+    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+    if (fs.existsSync(DATA_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+      return new Map(Object.entries(raw));
+    }
+  } catch {
+    console.warn("Could not load profiles.json, starting fresh");
+  }
+  return new Map();
+}
+
+function saveProfiles(profiles: Map<string, InMemoryProfile>) {
+  try {
+    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
+    fs.writeFileSync(DATA_FILE, JSON.stringify(Object.fromEntries(profiles), null, 2));
+  } catch (err: any) {
+    console.warn("Could not save profiles.json:", err.message);
+  }
+}
+
+const inMemoryProfiles = loadProfiles();
+console.log(`Loaded ${inMemoryProfiles.size} persisted profile(s)`);
 
 // Scoring logic (mirrors on-chain getMaxLoanAmount)
 function computeMaxLoanAmount(score: number): number {
@@ -146,6 +175,7 @@ app.post("/api/verify/worldid", async (req, res) => {
       worldIdVerified: true,
       lastUpdated: Math.floor(Date.now() / 1000),
     });
+    saveProfiles(inMemoryProfiles);
 
     res.json({ verified: true, nullifierHash, signal });
   } catch (error: any) {
@@ -230,13 +260,14 @@ app.post("/api/credit/request", async (req, res) => {
     // Compute mock score
     const score = computeScore(isWorldIdVerified, isReclaimVerified, isMonoLinked);
 
-    // Store in memory immediately
+    // Store in memory and persist to disk
     inMemoryProfiles.set(walletKey, {
       score,
       worldIdVerified: isWorldIdVerified,
       reclaimVerified: isReclaimVerified,
       lastUpdated: Math.floor(Date.now() / 1000),
     });
+    saveProfiles(inMemoryProfiles);
 
     creditJobs.set(jobId, {
       walletAddress,
@@ -346,6 +377,28 @@ app.get("/api/credit/status/:walletAddress", async (req, res) => {
       outstandingDebt: onChainData?.outstandingDebt || 0,
       defaultCount: onChainData?.defaultCount || 0,
     });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/demo/mpesa — demo-only endpoint to simulate M-Pesa verification
+// Marks the wallet as reclaimVerified so the score updates to the next tier
+app.post("/api/demo/mpesa", async (req, res) => {
+  try {
+    const { walletAddress } = req.body;
+    if (!walletAddress || !ethers.isAddress(walletAddress)) {
+      res.status(400).json({ error: "Invalid wallet address" });
+      return;
+    }
+    const walletKey = walletAddress.toLowerCase();
+    reclaimProofs.set(walletKey, { walletAddress: walletKey, mpesaBalance: 5000, verified: true });
+    const existing = inMemoryProfiles.get(walletKey) || {
+      score: 0, worldIdVerified: false, reclaimVerified: false, lastUpdated: 0,
+    };
+    inMemoryProfiles.set(walletKey, { ...existing, reclaimVerified: true, lastUpdated: Math.floor(Date.now() / 1000) });
+    saveProfiles(inMemoryProfiles);
+    res.json({ success: true, message: "M-Pesa demo verification recorded" });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

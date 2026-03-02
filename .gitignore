@@ -22,6 +22,9 @@ dist/
 .next/
 .vercel/
 
+# Runtime data (wallet state, persisted profiles)
+backend/data/
+
 # OS
 .DS_Store
 Thumbs.db

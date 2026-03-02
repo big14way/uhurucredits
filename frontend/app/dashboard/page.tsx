@@ -27,6 +27,7 @@ export default function Dashboard() {
   const [evaluating, setEvaluating] = useState(false);
   const [evalStatus, setEvalStatus] = useState<"idle" | "submitted" | "error">("idle");
   const [bankError, setBankError] = useState("");
+  const [mpesaStatus, setMpesaStatus] = useState<"idle" | "done">("idle");
 
   const fetchProfile = useCallback(async (addr: string) => {
     try {
@@ -62,6 +63,18 @@ export default function Dashboard() {
     } catch {
       setBankError("Failed to reach the server. Please try again.");
     }
+  };
+
+  const handleDemoMpesa = async () => {
+    try {
+      await fetch(`${API_URL}/api/demo/mpesa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletAddress: address }),
+      });
+      setMpesaStatus("done");
+      await fetchProfile(address);
+    } catch { /* silent */ }
   };
 
   const handleTriggerEvaluation = async () => {
@@ -235,6 +248,28 @@ export default function Dashboard() {
               <span className="text-yellow-400 text-xs mt-0.5">⚠</span>
               <p className="text-yellow-400/80 text-xs leading-relaxed">{bankError}</p>
             </div>
+          )}
+
+          {/* M-Pesa demo — shown until verified, unlocks $500 tier */}
+          {!profile?.reclaimVerified && (
+            <button
+              onClick={handleDemoMpesa}
+              disabled={mpesaStatus === "done"}
+              className="w-full flex items-center gap-4 p-4 rounded-2xl border border-white/5 card-hover text-left disabled:opacity-40"
+              style={{ background: "#0d0d18" }}
+            >
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0" style={{ background: "#14171f" }}>📱</div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white">Verify M-Pesa History</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {mpesaStatus === "done" ? "Verified — re-run evaluation to update score" : "Unlock $500 limit · Demo mode"}
+                </p>
+              </div>
+              {mpesaStatus === "done"
+                ? <span className="text-green-400 ml-auto text-sm shrink-0">✓</span>
+                : <span className="text-gray-700 ml-auto text-xl shrink-0">›</span>
+              }
+            </button>
           )}
 
           <button

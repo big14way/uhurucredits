@@ -26,7 +26,7 @@ export default function Apply() {
   const [score, setScore] = useState(0);
   const [maxAmount, setMaxAmount] = useState(0);
   const [worldIdVerified, setWorldIdVerified] = useState(false);
-  const [amount, setAmount] = useState(50);
+  const [amount, setAmount] = useState(1);
   const [durationWeeks, setDurationWeeks] = useState(4);
   const [loading, setLoading] = useState(true);
   const [applying, setApplying] = useState(false);
@@ -39,7 +39,7 @@ export default function Apply() {
       setScore(data.score);
       setMaxAmount(data.maxLoanAmount);
       setWorldIdVerified(data.worldIdVerified || false);
-      if (data.maxLoanAmount > 0) setAmount(Math.min(50, data.maxLoanAmount));
+      if (data.maxLoanAmount > 0) setAmount(Math.min(1, data.maxLoanAmount));
     } catch {
       // keep defaults
     } finally {
@@ -184,16 +184,16 @@ export default function Apply() {
           </div>
           <input
             type="range"
-            min={50}
-            max={Math.max(maxAmount, 50)}
-            step={50}
+            min={1}
+            max={Math.max(maxAmount, 1)}
+            step={1}
             value={amount}
             onChange={(e) => setAmount(Number(e.target.value))}
             className="w-full"
           />
           <div className="flex justify-between text-xs text-gray-600 mt-2">
-            <span>$50</span>
-            <span>${Math.max(maxAmount, 50).toLocaleString()}</span>
+            <span>$1</span>
+            <span>${Math.max(maxAmount, 1).toLocaleString()}</span>
           </div>
         </div>
 
@@ -258,10 +258,10 @@ export default function Apply() {
         {/* Submit */}
         <button
           onClick={handleApply}
-          disabled={applying || amount < 50 || amount > maxAmount}
+          disabled={applying || amount < 1 || amount > maxAmount}
           className="w-full py-4 rounded-2xl text-white font-bold text-base transition-all disabled:opacity-30 disabled:cursor-not-allowed"
           style={
-            !applying && amount >= 50 && amount <= maxAmount
+            !applying && amount >= 1 && amount <= maxAmount
               ? { background: "linear-gradient(135deg, #0d9488, #059669)", boxShadow: "0 4px 24px rgba(13,148,136,0.3)" }
               : { background: "#1a1f2e" }
           }
