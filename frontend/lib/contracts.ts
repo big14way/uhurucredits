@@ -8,7 +8,7 @@ export const CONTRACTS = {
   USDC: process.env.NEXT_PUBLIC_USDC_ADDRESS || "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
 };
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+export const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://uhurucredits.onrender.com";
 
 export const CreditIdentityABI = [
   "function getProfile(address wallet) view returns (tuple(uint16 score, uint40 lastUpdated, bool worldIdVerified, bool reclaimVerified, uint32 totalLoans, uint32 defaultCount, uint16 repaymentRate, uint256 outstandingDebt))",
