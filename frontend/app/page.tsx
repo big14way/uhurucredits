@@ -8,8 +8,9 @@ import { useWallet } from "@/lib/useWallet";
 
 export default function Home() {
   const router = useRouter();
-  const { address, isInWorldApp, hasWallet, connectWallet } = useWallet();
+  const { address, isInWorldApp, hasWallet, miniKitAddress, connectWallet, connectWithWorldApp } = useWallet();
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState("");
 
   const handleWorldIDVerify = async () => {
@@ -42,10 +43,22 @@ export default function Home() {
     }
   };
 
+  const handleConnectWorldApp = async () => {
+    setIsConnecting(true);
+    setError("");
+    const ok = await connectWithWorldApp();
+    setIsConnecting(false);
+    if (!ok) setError("Could not connect wallet. Please try again.");
+  };
+
   const handleConnectWallet = () => {
     connectWallet();
     router.push("/dashboard");
   };
+
+  // Determine which CTA to show
+  const showWorldIDBtn = isInWorldApp && !!miniKitAddress;
+  const showConnectWorldApp = isInWorldApp && !miniKitAddress;
 
   return (
     <div className="min-h-screen relative overflow-hidden" style={{ background: "#06060f" }}>
@@ -67,7 +80,7 @@ export default function Home() {
           <p className="mt-1 text-gray-600 text-sm">Uncollateralized · Privacy-First · On-Chain</p>
         </div>
 
-        {/* World App banner for browser users */}
+        {/* Info banner for browser users */}
         {!isInWorldApp && !hasWallet && (
           <div className="flex items-start gap-3 p-4 rounded-2xl border border-blue-500/20 mb-6"
             style={{ background: "rgba(59,130,246,0.05)" }}>
@@ -75,7 +88,7 @@ export default function Home() {
             <div>
               <p className="text-blue-300 font-semibold text-sm">World ID requires World App</p>
               <p className="text-blue-400/60 text-xs mt-1 leading-relaxed">
-                Download the <span className="text-blue-300 font-medium">World App</span> on your phone to verify your identity and get gas-free transactions. You can still connect a browser wallet below to explore.
+                Download the <span className="text-blue-300 font-medium">World App</span> on your phone to verify identity and get gas-free transactions. You can still connect a browser wallet below to explore.
               </p>
             </div>
           </div>
@@ -105,8 +118,8 @@ export default function Home() {
           ))}
         </div>
 
-        {/* CTA */}
-        {isInWorldApp ? (
+        {/* CTA — four states */}
+        {showWorldIDBtn ? (
           <button
             onClick={handleWorldIDVerify}
             disabled={isVerifying}
@@ -123,6 +136,28 @@ export default function Home() {
               </span>
             ) : "Verify with World ID"}
           </button>
+        ) : showConnectWorldApp ? (
+          <>
+            <button
+              onClick={handleConnectWorldApp}
+              disabled={isConnecting}
+              className="w-full py-4 rounded-2xl text-white font-bold text-lg disabled:opacity-50 transition-all"
+              style={{ background: "linear-gradient(135deg, #0d9488 0%, #059669 100%)", boxShadow: "0 4px 24px rgba(13,148,136,0.35)" }}
+            >
+              {isConnecting ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  Connecting...
+                </span>
+              ) : "Connect World App Wallet"}
+            </button>
+            <p className="text-center text-gray-600 text-xs mt-3">
+              Tap to link your World App wallet to Uhuru Credit
+            </p>
+          </>
         ) : hasWallet ? (
           <>
             <button

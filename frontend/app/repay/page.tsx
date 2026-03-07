@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { MiniKit } from "@worldcoin/minikit-js";
+import { ethers } from "ethers";
 import { getActiveLoan, CONTRACTS, ERC20ContractABI, LoanManagerContractABI } from "@/lib/contracts";
 import { useWallet } from "@/lib/useWallet";
 
@@ -63,30 +64,45 @@ export default function Repay() {
   const progress = loan ? (loan.installmentsPaid / loan.installmentsTotal) * 100 : 0;
 
   const handleRepay = async () => {
-    if (!isInWorldApp || !loan) { setError("Please open in World App to submit transactions"); return; }
+    if (!loan) return;
     setRepaying(true);
     setError("");
     try {
-      await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{
-          address: CONTRACTS.USDC as `0x${string}`,
-          abi: ERC20ContractABI,
-          functionName: "approve",
-          args: [CONTRACTS.LOAN_MANAGER as `0x${string}`, BigInt(Math.ceil(loan.installmentAmount * 1e6))],
-        }],
-      });
-      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{
-          address: CONTRACTS.LOAN_MANAGER as `0x${string}`,
-          abi: LoanManagerContractABI,
-          functionName: "repayInstallment",
-          args: [BigInt(loan.loanId)],
-        }],
-      });
-      if (finalPayload.status === "success") {
-        await fetchLoan();
+      if (isInWorldApp) {
+        // World App: gas-free via MiniKit (approve + repay in sequence)
+        await MiniKit.commandsAsync.sendTransaction({
+          transaction: [{
+            address: CONTRACTS.USDC as `0x${string}`,
+            abi: ERC20ContractABI,
+            functionName: "approve",
+            args: [CONTRACTS.LOAN_MANAGER as `0x${string}`, BigInt(Math.ceil(loan.installmentAmount * 1e6))],
+          }],
+        });
+        const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+          transaction: [{
+            address: CONTRACTS.LOAN_MANAGER as `0x${string}`,
+            abi: LoanManagerContractABI,
+            functionName: "repayInstallment",
+            args: [BigInt(loan.loanId)],
+          }],
+        });
+        if (finalPayload.status === "success") {
+          await fetchLoan();
+        } else {
+          setError("Transaction failed. Please try again.");
+        }
       } else {
-        setError("Transaction failed. Please try again.");
+        // Browser: ethers.js direct tx via MetaMask
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const provider = new ethers.BrowserProvider((window as any).ethereum);
+        const signer = await provider.getSigner();
+        const usdc = new ethers.Contract(CONTRACTS.USDC, ERC20ContractABI, signer);
+        const approveTx = await usdc.approve(CONTRACTS.LOAN_MANAGER, BigInt(Math.ceil(loan.installmentAmount * 1e6)));
+        await approveTx.wait();
+        const loanManager = new ethers.Contract(CONTRACTS.LOAN_MANAGER, LoanManagerContractABI, signer);
+        const repayTx = await loanManager.repayInstallment(BigInt(loan.loanId));
+        await repayTx.wait();
+        await fetchLoan();
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Transaction failed");
@@ -168,9 +184,9 @@ export default function Repay() {
 
       <div className="px-5 space-y-4">
         {!isInWorldApp && (
-          <div className="flex items-center gap-3 p-3 rounded-2xl border border-yellow-500/20" style={{ background: "rgba(234,179,8,0.05)" }}>
-            <span className="text-lg">⚡</span>
-            <p className="text-xs text-yellow-400">Repayments require World App</p>
+          <div className="flex items-center gap-3 p-3 rounded-2xl border border-blue-500/20" style={{ background: "rgba(59,130,246,0.05)" }}>
+            <span className="text-lg">🦊</span>
+            <p className="text-xs text-blue-400">MetaMask detected — repayment will use Base Sepolia. Approve USDC + repay in 2 steps.</p>
           </div>
         )}
 

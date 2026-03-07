@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { MiniKit } from "@worldcoin/minikit-js";
+import { ethers } from "ethers";
 import { API_URL, CONTRACTS, LoanManagerContractABI } from "@/lib/contracts";
 import { useWallet } from "@/lib/useWallet";
 
@@ -57,22 +58,33 @@ export default function Apply() {
   const tier = getTier(score);
 
   const handleApply = async () => {
-    if (!isInWorldApp) { setError("Please open in World App to submit transactions"); return; }
     setApplying(true);
     setError("");
     try {
-      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [{
-          address: CONTRACTS.LOAN_MANAGER as `0x${string}`,
-          abi: LoanManagerContractABI,
-          functionName: "applyForLoan",
-          args: [BigInt(amount * 1e6), durationWeeks],
-        }],
-      });
-      if (finalPayload.status === "success") {
-        router.push("/repay");
+      if (isInWorldApp) {
+        // World App: gas-free via MiniKit
+        const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+          transaction: [{
+            address: CONTRACTS.LOAN_MANAGER as `0x${string}`,
+            abi: LoanManagerContractABI,
+            functionName: "applyForLoan",
+            args: [BigInt(Math.floor(amount * 1e6)), BigInt(durationWeeks)],
+          }],
+        });
+        if (finalPayload.status === "success") {
+          router.push("/repay");
+        } else {
+          setError("Transaction failed. Please try again.");
+        }
       } else {
-        setError("Transaction failed. Please try again.");
+        // Browser: ethers.js direct tx via MetaMask
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const provider = new ethers.BrowserProvider((window as any).ethereum);
+        const signer = await provider.getSigner();
+        const contract = new ethers.Contract(CONTRACTS.LOAN_MANAGER, LoanManagerContractABI, signer);
+        const tx = await contract.applyForLoan(BigInt(Math.floor(amount * 1e6)), BigInt(durationWeeks));
+        await tx.wait();
+        router.push("/repay");
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Transaction failed");
@@ -143,12 +155,12 @@ export default function Apply() {
       </div>
 
       <div className="px-5 space-y-4">
-        {/* World App notice */}
+        {/* Browser mode notice */}
         {!isInWorldApp && (
-          <div className="flex items-center gap-3 p-3 rounded-2xl border border-yellow-500/20"
-            style={{ background: "rgba(234,179,8,0.05)" }}>
-            <span className="text-lg">⚡</span>
-            <p className="text-xs text-yellow-400">Submitting transactions requires World App</p>
+          <div className="flex items-center gap-3 p-3 rounded-2xl border border-blue-500/20"
+            style={{ background: "rgba(59,130,246,0.05)" }}>
+            <span className="text-lg">🦊</span>
+            <p className="text-xs text-blue-400">MetaMask detected — transaction will use Base Sepolia. Make sure you have test ETH for gas.</p>
           </div>
         )}
 
