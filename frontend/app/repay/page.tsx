@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { MiniKit } from "@worldcoin/minikit-js";
 import { ethers } from "ethers";
-import { getActiveLoan, CONTRACTS, ERC20ContractABI, LoanManagerContractABI } from "@/lib/contracts";
+import { getActiveLoan, CONTRACTS, ERC20ContractABI, LoanManagerContractABI, switchToBaseSepolia } from "@/lib/contracts";
 import { useWallet } from "@/lib/useWallet";
 
 interface LoanData {
@@ -93,6 +93,7 @@ export default function Repay() {
         }
       } else {
         // Browser: ethers.js direct tx via MetaMask
+        await switchToBaseSepolia();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const provider = new ethers.BrowserProvider((window as any).ethereum);
         const signer = await provider.getSigner();

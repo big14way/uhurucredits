@@ -10,6 +10,33 @@ export const CONTRACTS = {
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://uhurucredits.onrender.com";
 
+const BASE_SEPOLIA_CHAIN_ID = "0x14A34"; // 84532
+
+// Switches MetaMask to Base Sepolia, adds it if not present
+export async function switchToBaseSepolia(): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const eth = (window as any).ethereum;
+  if (!eth) throw new Error("MetaMask not found");
+  try {
+    await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: BASE_SEPOLIA_CHAIN_ID }] });
+  } catch (err: any) {
+    if (err?.code === 4902) {
+      await eth.request({
+        method: "wallet_addEthereumChain",
+        params: [{
+          chainId: BASE_SEPOLIA_CHAIN_ID,
+          chainName: "Base Sepolia",
+          nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+          rpcUrls: ["https://sepolia.base.org"],
+          blockExplorerUrls: ["https://sepolia.basescan.org"],
+        }],
+      });
+    } else {
+      throw err;
+    }
+  }
+}
+
 export const CreditIdentityABI = [
   "function getProfile(address wallet) view returns (tuple(uint16 score, uint40 lastUpdated, bool worldIdVerified, bool reclaimVerified, uint32 totalLoans, uint32 defaultCount, uint16 repaymentRate, uint256 outstandingDebt))",
   "function isEligible(address wallet) view returns (bool)",

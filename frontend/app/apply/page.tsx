@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { MiniKit } from "@worldcoin/minikit-js";
 import { ethers } from "ethers";
-import { API_URL, CONTRACTS, LoanManagerContractABI } from "@/lib/contracts";
+import { API_URL, CONTRACTS, LoanManagerContractABI, switchToBaseSepolia } from "@/lib/contracts";
 import { useWallet } from "@/lib/useWallet";
 
 function getAPR(score: number) {
@@ -78,6 +78,7 @@ export default function Apply() {
         }
       } else {
         // Browser: ethers.js direct tx via MetaMask
+        await switchToBaseSepolia();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const provider = new ethers.BrowserProvider((window as any).ethereum);
         const signer = await provider.getSigner();
