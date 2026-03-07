@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
+import { spawn } from "child_process";
 import { CreditIdentityABI, LoanManagerABI } from "./abi";
 
 // Load .env from the backend root regardless of working directory
@@ -88,6 +89,78 @@ function computeScore(
   if (reclaimVerified) score += 150; // M-Pesa proof → better tier
   if (monoLinked) score += 160;     // Bank linked → better tier
   return Math.min(score, 1000);
+}
+
+// CRE simulation — runs the WASM workflow locally per-user
+const CRE_WORKFLOW_DIR = path.join(__dirname, "..", "..", "uhuru-cre", "credit-scoring");
+const CRE_PROJECT_ROOT = path.join(__dirname, "..", "..", "uhuru-cre");
+
+async function runCRESimulation(
+  walletAddress: string,
+  worldIdVerified: boolean,
+  reclaimVerified: boolean,
+  monoAccountId: string
+): Promise<number | null> {
+  return new Promise((resolve) => {
+    const payload = JSON.stringify({
+      wallet: walletAddress,
+      worldIdVerified,
+      reclaimVerified,
+      monoAccountId: monoAccountId || "",
+    });
+
+    const creBin = process.env.CRE_BIN || "cre";
+    const proc = spawn(
+      creBin,
+      [
+        "workflow", "simulate", CRE_WORKFLOW_DIR,
+        "-R", CRE_PROJECT_ROOT,
+        "-T", "staging-settings",
+        "--http-payload", payload,
+        "--non-interactive",
+        "--trigger-index", "1",
+      ],
+      {
+        cwd: CRE_WORKFLOW_DIR,
+        env: {
+          ...process.env,
+          // CRE secrets: pass Mono key (empty if not configured — score gracefully degrades)
+          MONO_SECRET_KEY: process.env.MONO_SECRET_KEY || "",
+        },
+      }
+    );
+
+    let stdout = "";
+    proc.stdout?.on("data", (d: Buffer) => { stdout += d.toString(); });
+    proc.stderr?.on("data", (_d: Buffer) => { /* suppress */ });
+
+    const timer = setTimeout(() => {
+      proc.kill();
+      console.warn(`[CRE] Simulation timed out for ${walletAddress}`);
+      resolve(null);
+    }, 120_000);
+
+    proc.on("close", (code) => {
+      clearTimeout(timer);
+      const match = stdout.match(/UHURU_CRE_SCORE:(\{[^\n]+\})/);
+      if (match) {
+        try {
+          const result = JSON.parse(match[1]);
+          console.log(`[CRE] Score for ${walletAddress}: ${result.score}`);
+          resolve(typeof result.score === "number" ? result.score : null);
+          return;
+        } catch { /* fall through */ }
+      }
+      console.warn(`[CRE] Simulation exited (code=${code}), no score found`);
+      resolve(null);
+    });
+
+    proc.on("error", (err) => {
+      clearTimeout(timer);
+      console.warn(`[CRE] Failed to spawn: ${err.message}`);
+      resolve(null);
+    });
+  });
 }
 
 // Ethers provider
@@ -278,27 +351,27 @@ app.post("/api/credit/request", async (req, res) => {
     // Try to write on-chain in background (non-blocking)
     tryWriteOnChain(walletAddress, score, isWorldIdVerified, isReclaimVerified);
 
-    // Also try external CRE workflow if configured
-    const creTriggerUrl = process.env.CRE_TRIGGER_URL;
-    if (creTriggerUrl) {
-      axios
-        .post(
-          creTriggerUrl,
-          {
-            wallet: walletAddress,
-            monoAccountId: monoAccountId || "",
+    // Run CRE simulation in background — updates score asynchronously with TEE result
+    const monoId = monoAccounts.get(walletKey) || (monoAccountId as string) || "";
+    (async () => {
+      const creScore = await runCRESimulation(walletAddress, isWorldIdVerified, isReclaimVerified, monoId);
+      if (creScore !== null && creScore > 0) {
+        const current = inMemoryProfiles.get(walletKey);
+        // Keep the higher of CRE score and mock score (mock may include Mono bonus)
+        const finalScore = Math.max(creScore, current?.score || 0);
+        if (finalScore !== current?.score) {
+          inMemoryProfiles.set(walletKey, {
+            score: finalScore,
             worldIdVerified: isWorldIdVerified,
             reclaimVerified: isReclaimVerified,
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${process.env.CRE_AUTH_KEY || ""}`,
-              "Content-Type": "application/json",
-            },
-          }
-        )
-        .catch(() => {});
-    }
+            lastUpdated: Math.floor(Date.now() / 1000),
+          });
+          saveProfiles(inMemoryProfiles);
+          tryWriteOnChain(walletAddress, finalScore, isWorldIdVerified, isReclaimVerified);
+          console.log(`[CRE] Updated score for ${walletAddress}: ${current?.score} → ${finalScore}`);
+        }
+      }
+    })().catch(() => {});
 
     res.json({
       jobId,

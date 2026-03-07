@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: uhuru-credit-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: RPC_URL_BASE_SEPOLIA
+        value: https://sepolia.base.org
+      - key: CREDIT_IDENTITY_ADDRESS
+        value: 0x02cB407dF115c7Bf287dEd05aab870485fC800aB
+      - key: LOAN_MANAGER_ADDRESS
+        value: 0xA29373f508CABcB647aC677C329f24a939b29776
+      - key: PRIVATE_KEY
+        sync: false
+      - key: MONO_SECRET_KEY
+        sync: false
+      - key: MONO_APP_ID
+        sync: false

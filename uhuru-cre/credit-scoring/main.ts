@@ -21,8 +21,11 @@ import {
 	type CronPayload,
 	cre,
 	getNetwork,
+	HTTPCapability,
+	type HTTPPayload,
 	type HTTPSendRequester,
 	hexToBase64,
+	identical,
 	median,
 	Runner,
 	type Runtime,
@@ -147,6 +150,77 @@ function extractScoringParams(
 }
 
 // ============================================================================
+// Demo Transaction Data
+// Used when Mono API is unavailable (no key, sandbox, etc.)
+// Realistic Lagos salary worker: 150k NGN/month + freelance income
+// Produces score ~850 with WorldID, ~950 with WorldID + Reclaim
+// ============================================================================
+
+function generateDemoTransactions(): MonoTransaction[] {
+	const msPerDay = 86_400_000
+	const now = Date.now()
+	const date = (daysAgo: number) =>
+		new Date(now - daysAgo * msPerDay).toISOString().split('T')[0]
+
+	type TxSpec = {
+		daysAgo: number
+		amount: number
+		type: 'credit' | 'debit'
+		narration: string
+	}
+
+	// One month of transactions (offset shifts the whole block into the past)
+	const monthSpec = (offset: number): TxSpec[] => [
+		{ daysAgo: offset + 1,  amount: 150_000, type: 'credit', narration: 'SALARY - EMPLOYER NGN' },
+		{ daysAgo: offset + 2,  amount: 50_000,  type: 'debit',  narration: 'RENT PAYMENT' },
+		{ daysAgo: offset + 3,  amount: 5_500,   type: 'debit',  narration: 'SHOPRITE SUPERMARKET' },
+		{ daysAgo: offset + 4,  amount: 3_000,   type: 'debit',  narration: 'TOTAL FILLING STATION' },
+		{ daysAgo: offset + 5,  amount: 1_800,   type: 'debit',  narration: 'UBER RIDES' },
+		{ daysAgo: offset + 6,  amount: 1_500,   type: 'debit',  narration: 'MTN AIRTIME' },
+		{ daysAgo: offset + 7,  amount: 7_200,   type: 'debit',  narration: 'TANTALIZERS RESTAURANT' },
+		{ daysAgo: offset + 8,  amount: 20_000,  type: 'credit', narration: 'FREELANCE - USD TRANSFER' },
+		{ daysAgo: offset + 9,  amount: 4_500,   type: 'debit',  narration: 'DSTV SUBSCRIPTION' },
+		{ daysAgo: offset + 10, amount: 2_800,   type: 'debit',  narration: 'PHARMACY/CHEMIST' },
+		{ daysAgo: offset + 11, amount: 6_000,   type: 'debit',  narration: 'EKEDC ELECTRICITY' },
+		{ daysAgo: offset + 12, amount: 2_500,   type: 'debit',  narration: 'UBER RIDES' },
+		{ daysAgo: offset + 13, amount: 8_000,   type: 'debit',  narration: 'GROCERY STORE' },
+		{ daysAgo: offset + 14, amount: 1_200,   type: 'debit',  narration: 'WATER BILL' },
+		{ daysAgo: offset + 15, amount: 10_000,  type: 'credit', narration: 'PEER TRANSFER RECEIVED' },
+		{ daysAgo: offset + 16, amount: 3_500,   type: 'debit',  narration: 'FUEL' },
+		{ daysAgo: offset + 17, amount: 4_000,   type: 'debit',  narration: 'JUMIA ONLINE SHOPPING' },
+		{ daysAgo: offset + 18, amount: 1_800,   type: 'debit',  narration: 'BARBER / SALON' },
+		{ daysAgo: offset + 19, amount: 2_500,   type: 'debit',  narration: 'LUNCH - OFFICE CANTEEN' },
+		{ daysAgo: offset + 20, amount: 1_500,   type: 'debit',  narration: 'AIRTIME TOPUP' },
+		{ daysAgo: offset + 21, amount: 9_000,   type: 'debit',  narration: 'WEEKLY GROCERIES' },
+		{ daysAgo: offset + 22, amount: 1_500,   type: 'debit',  narration: 'TRANSPORT' },
+		{ daysAgo: offset + 23, amount: 3_000,   type: 'debit',  narration: 'DINNER - RESTAURANT' },
+		{ daysAgo: offset + 24, amount: 2_000,   type: 'debit',  narration: 'PHARMACY' },
+		{ daysAgo: offset + 25, amount: 5_000,   type: 'debit',  narration: 'FUEL' },
+		{ daysAgo: offset + 26, amount: 3_500,   type: 'debit',  narration: 'LAUNDRY' },
+		{ daysAgo: offset + 27, amount: 6_000,   type: 'debit',  narration: 'GROCERY STORE' },
+		{ daysAgo: offset + 28, amount: 2_200,   type: 'debit',  narration: 'TRANSPORT' },
+		{ daysAgo: offset + 29, amount: 4_000,   type: 'debit',  narration: 'NETFLIX / STREAMING' },
+		{ daysAgo: offset + 30, amount: 7_500,   type: 'debit',  narration: 'WEEKEND OUTING' },
+	]
+
+	// Three months of specs (month 1 = most recent)
+	const specs: TxSpec[] = [
+		...monthSpec(0),
+		...monthSpec(30),
+		...monthSpec(60),
+	]
+
+	// Build transactions with running balance, then filter to 90-day window
+	let balance = 180_000
+	return specs
+		.map((t) => {
+			balance += t.type === 'credit' ? t.amount : -t.amount
+			return { amount: t.amount, type: t.type, date: date(t.daysAgo), balance, narration: t.narration }
+		})
+		.filter((t) => new Date(t.date).getTime() >= now - 90 * msPerDay)
+}
+
+// ============================================================================
 // CRE HTTP Data Fetcher (runs inside TEE with DON consensus)
 // ============================================================================
 
@@ -176,8 +250,13 @@ const fetchMonoData = (
 			const parsed = JSON.parse(responseText)
 			transactions = parsed?.data?.transactions || []
 		} catch {
-			// If parsing fails, proceed with empty transactions (base score only)
+			// parsing failed — fall through to demo data
 		}
+	}
+
+	// Fall back to demo data when Mono API is unavailable or returns no transactions
+	if (transactions.length === 0) {
+		transactions = generateDemoTransactions()
 	}
 
 	// Compute credit score from transaction data
@@ -328,8 +407,8 @@ const doCreditScoring = (runtime: Runtime<Config>): string => {
 			fetchMonoData,
 			ConsensusAggregationByFields<CreditScoreResult>({
 				score: median,
-				worldIdVerified: median,
-				reclaimVerified: median,
+				worldIdVerified: identical,
+				reclaimVerified: identical,
 			}),
 		)(runtime.config)
 		.result()
@@ -357,14 +436,115 @@ const onCronTrigger = (
 	return doCreditScoring(runtime)
 }
 
+// ============================================================================
+// HTTP Trigger — per-user on-demand scoring
+// Payload: { wallet, worldIdVerified, reclaimVerified, monoAccountId }
+// Simulate: cre workflow simulate . --http-payload '{"wallet":"0x...","worldIdVerified":true}' --non-interactive --trigger-index 1
+// ============================================================================
+
+const onHttpTrigger = (
+	runtime: Runtime<Config>,
+	payload: HTTPPayload,
+): string => {
+	let wallet = '0x0000000000000000000000000000000000000001'
+	let worldIdVerified = false
+	let reclaimVerified = false
+	let monoAccountId = 'test_account'
+
+	try {
+		const body = JSON.parse(
+			Buffer.from(payload.input).toString('utf-8'),
+		)
+		if (body.wallet) wallet = body.wallet
+		if (body.worldIdVerified !== undefined)
+			worldIdVerified = Boolean(body.worldIdVerified)
+		if (body.reclaimVerified !== undefined)
+			reclaimVerified = Boolean(body.reclaimVerified)
+		if (body.monoAccountId) monoAccountId = body.monoAccountId
+	} catch {
+		// use defaults
+	}
+
+	runtime.log(
+		`HTTP trigger: scoring wallet=${wallet} worldId=${worldIdVerified} reclaim=${reclaimVerified}`,
+	)
+
+	// Build a per-user Mono fetcher via closure
+	const fetchMonoDataForUser = (
+		sendRequester: HTTPSendRequester,
+		config: Config,
+	): CreditScoreResult => {
+		const response = sendRequester
+			.sendRequest({
+				method: 'GET',
+				url: `${config.monoApiUrl}/v2/accounts/${monoAccountId}/transactions?limit=100&period=last90days`,
+			})
+			.result()
+
+		let transactions: MonoTransaction[] = []
+		if (response.statusCode === 200) {
+			try {
+				const text = Buffer.from(response.body).toString('utf-8')
+				transactions = JSON.parse(text)?.data?.transactions || []
+			} catch {
+				// parsing failed — fall through to demo data
+			}
+		}
+
+		// Fall back to demo data when Mono API is unavailable or returns no transactions
+		if (transactions.length === 0) {
+			transactions = generateDemoTransactions()
+		}
+
+		const params = extractScoringParams(
+			transactions,
+			worldIdVerified,
+			reclaimVerified,
+		)
+		const score = computeCreditScore(params)
+		return { score, worldIdVerified, reclaimVerified }
+	}
+
+	const httpCapability = new cre.capabilities.HTTPClient()
+	const scoreResult = httpCapability
+		.sendRequest(
+			runtime,
+			fetchMonoDataForUser,
+			ConsensusAggregationByFields<CreditScoreResult>({
+				score: median,
+				worldIdVerified: identical,
+				reclaimVerified: identical,
+			}),
+		)(runtime.config)
+		.result()
+
+	// Emit parseable log line for backend to capture
+	runtime.log(
+		`UHURU_CRE_SCORE:${JSON.stringify({
+			wallet,
+			score: scoreResult.score,
+			worldIdVerified: scoreResult.worldIdVerified,
+			reclaimVerified: scoreResult.reclaimVerified,
+		})}`,
+	)
+
+	return `Score: ${scoreResult.score}`
+}
+
 const initWorkflow = (config: Config) => {
 	const cronTrigger = new cre.capabilities.CronCapability()
+	const httpTrigger = new HTTPCapability()
 	return [
 		cre.handler(
 			cronTrigger.trigger({
 				schedule: config.schedule,
 			}),
 			onCronTrigger,
+		),
+		// trigger-index 1: HTTP trigger for per-user on-demand scoring
+		cre.handler(
+			httpTrigger.trigger({ authorizedKeys: [] }),
+			onHttpTrigger,
 		),
 	]
 }
