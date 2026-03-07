@@ -260,7 +260,7 @@ app.post("/api/verify/worldid", async (req, res) => {
 app.get("/api/mono/auth-url", (req, res) => {
   const monoAppId = process.env.MONO_APP_ID;
   if (!monoAppId) {
-    res.status(500).json({ error: "MONO_APP_ID not configured" });
+    res.json({ url: null, message: "Bank connection coming soon" });
     return;
   }
   const url = `https://connect.mono.co/?key=${monoAppId}&scope=transactions`;

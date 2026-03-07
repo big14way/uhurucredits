@@ -53,15 +53,22 @@ export default function Dashboard() {
   const handleConnectBank = async () => {
     setBankError("");
     try {
-      const res = await fetch(`${API_URL}/api/mono/auth-url`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      const res = await fetch(`${API_URL}/api/mono/auth-url`, { signal: controller.signal });
+      clearTimeout(timeout);
       const data = await res.json();
       if (!data.url) {
-        setBankError("Bank connection is not configured yet. Coming soon!");
+        setBankError("Bank connection coming soon — Mono.co integration in progress.");
         return;
       }
       window.open(data.url, "_blank");
-    } catch {
-      setBankError("Failed to reach the server. Please try again.");
+    } catch (err: any) {
+      if (err?.name === "AbortError") {
+        setBankError("Server is waking up, please try again in 30 seconds.");
+      } else {
+        setBankError("Failed to reach the server. Please try again.");
+      }
     }
   };
 
