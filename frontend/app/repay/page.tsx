@@ -92,16 +92,25 @@ export default function Repay() {
           setError("Transaction failed. Please try again.");
         }
       } else {
-        // Browser: ethers.js direct tx via MetaMask
+        // Browser: raw tx via MetaMask — bypass ethers.Contract to avoid ENS resolution
         await switchToBaseSepolia();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const provider = new ethers.BrowserProvider((window as any).ethereum);
         const signer = await provider.getSigner();
-        const usdc = new ethers.Contract(CONTRACTS.USDC, ERC20ContractABI, signer);
-        const approveTx = await usdc.approve(CONTRACTS.LOAN_MANAGER, BigInt(Math.ceil(loan.installmentAmount * 1e6)));
+        const usdcAddr = ethers.getAddress(CONTRACTS.USDC);
+        const loanManagerAddr = ethers.getAddress(CONTRACTS.LOAN_MANAGER);
+        // Step 1: approve USDC
+        const approveIface = new ethers.Interface(["function approve(address spender, uint256 amount)"]);
+        const approveData = approveIface.encodeFunctionData("approve", [
+          loanManagerAddr,
+          BigInt(Math.ceil(loan.installmentAmount * 1e6)),
+        ]);
+        const approveTx = await signer.sendTransaction({ to: usdcAddr, data: approveData });
         await approveTx.wait();
-        const loanManager = new ethers.Contract(CONTRACTS.LOAN_MANAGER, LoanManagerContractABI, signer);
-        const repayTx = await loanManager.repayInstallment(BigInt(loan.loanId));
+        // Step 2: repay installment
+        const repayIface = new ethers.Interface(["function repayInstallment(uint256 loanId)"]);
+        const repayData = repayIface.encodeFunctionData("repayInstallment", [BigInt(loan.loanId)]);
+        const repayTx = await signer.sendTransaction({ to: loanManagerAddr, data: repayData });
         await repayTx.wait();
         await fetchLoan();
       }

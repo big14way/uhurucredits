@@ -77,13 +77,18 @@ export default function Apply() {
           setError("Transaction failed. Please try again.");
         }
       } else {
-        // Browser: ethers.js direct tx via MetaMask
+        // Browser: raw tx via MetaMask — bypass ethers.Contract to avoid ENS resolution
         await switchToBaseSepolia();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const provider = new ethers.BrowserProvider((window as any).ethereum);
         const signer = await provider.getSigner();
-        const contract = new ethers.Contract(CONTRACTS.LOAN_MANAGER, LoanManagerContractABI, signer);
-        const tx = await contract.applyForLoan(BigInt(Math.floor(amount * 1e6)), BigInt(durationWeeks));
+        const iface = new ethers.Interface(["function applyForLoan(uint256 amount, uint8 durationWeeks)"]);
+        const data = iface.encodeFunctionData("applyForLoan", [
+          BigInt(Math.floor(amount * 1e6)),
+          durationWeeks,
+        ]);
+        const toAddr = ethers.getAddress(CONTRACTS.LOAN_MANAGER);
+        const tx = await signer.sendTransaction({ to: toAddr, data });
         await tx.wait();
         router.push("/repay");
       }
