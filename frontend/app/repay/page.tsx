@@ -4,8 +4,10 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { MiniKit } from "@worldcoin/minikit-js";
 import { ethers } from "ethers";
-import { getActiveLoan, CONTRACTS, ERC20ContractABI, LoanManagerContractABI, switchToBaseSepolia } from "@/lib/contracts";
+import { getActiveLoan, CONTRACTS, ERC20ContractABI, LoanManagerContractABI, switchToBaseSepolia, parseEthersError } from "@/lib/contracts";
 import { useWallet } from "@/lib/useWallet";
+import { useToast } from "@/app/components/Toast";
+import { useTxHistory } from "@/lib/useTxHistory";
 
 interface LoanData {
   loanId: number;
@@ -25,6 +27,8 @@ interface LoanData {
 export default function Repay() {
   const router = useRouter();
   const { address, isInWorldApp } = useWallet();
+  const { showToast } = useToast();
+  const { addTx } = useTxHistory();
   const [loan, setLoan] = useState<LoanData | null>(null);
   const [loading, setLoading] = useState(true);
   const [repaying, setRepaying] = useState(false);
@@ -87,35 +91,50 @@ export default function Repay() {
           }],
         });
         if (finalPayload.status === "success") {
+          const txHash = (finalPayload as { transaction_id?: string }).transaction_id ?? "";
+          addTx({ type: "installment_paid", amount: loan.installmentAmount, txHash, status: "success", timestamp: Date.now(), loanId: loan.loanId, installmentNum: loan.installmentsPaid + 1 });
+          showToast("success", `$${loan.installmentAmount.toFixed(2)} payment confirmed!`, `Installment ${loan.installmentsPaid + 1} of ${loan.installmentsTotal} complete.`, txHash);
           await fetchLoan();
         } else {
           setError("Transaction failed. Please try again.");
         }
       } else {
-        // Browser: raw tx via MetaMask — bypass ethers.Contract to avoid ENS resolution
+        // Browser: raw tx via MetaMask
         await switchToBaseSepolia();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const provider = new ethers.BrowserProvider((window as any).ethereum);
-        const signer = await provider.getSigner();
+        const browserProvider = new ethers.BrowserProvider((window as any).ethereum);
+        const signer = await browserProvider.getSigner();
+        const signerAddr = await signer.getAddress();
         const usdcAddr = ethers.getAddress(CONTRACTS.USDC);
         const loanManagerAddr = ethers.getAddress(CONTRACTS.LOAN_MANAGER);
-        // Step 1: approve USDC
-        const approveIface = new ethers.Interface(["function approve(address spender, uint256 amount)"]);
-        const approveData = approveIface.encodeFunctionData("approve", [
-          loanManagerAddr,
-          BigInt(Math.ceil(loan.installmentAmount * 1e6)),
-        ]);
-        const approveTx = await signer.sendTransaction({ to: usdcAddr, data: approveData });
-        await approveTx.wait();
-        // Step 2: repay installment
+        const neededWei = BigInt(Math.ceil(loan.installmentAmount * 1e6));
+        const allowanceIface = new ethers.Interface(["function allowance(address owner, address spender) view returns (uint256)"]);
+        // Check current allowance — only approve if insufficient
+        const allowanceData = allowanceIface.encodeFunctionData("allowance", [signerAddr, loanManagerAddr]);
+        const allowanceResult = await browserProvider.call({ to: usdcAddr, data: allowanceData });
+        const currentAllowance = BigInt(allowanceResult);
+        if (currentAllowance < neededWei) {
+          // Approve MaxUint256 so future installments don't need re-approval
+          const approveIface = new ethers.Interface(["function approve(address spender, uint256 amount)"]);
+          const approveData = approveIface.encodeFunctionData("approve", [loanManagerAddr, ethers.MaxUint256]);
+          const approveTx = await signer.sendTransaction({ to: usdcAddr, data: approveData });
+          await approveTx.wait();
+          // Confirm allowance is set before proceeding
+          const updatedResult = await browserProvider.call({ to: usdcAddr, data: allowanceData });
+          if (BigInt(updatedResult) < neededWei) throw new Error("Approval failed — please try again");
+        }
+        // Repay installment
         const repayIface = new ethers.Interface(["function repayInstallment(uint256 loanId)"]);
         const repayData = repayIface.encodeFunctionData("repayInstallment", [BigInt(loan.loanId)]);
         const repayTx = await signer.sendTransaction({ to: loanManagerAddr, data: repayData });
-        await repayTx.wait();
+        const receipt = await repayTx.wait();
+        const txHash = receipt?.hash ?? repayTx.hash;
+        addTx({ type: "installment_paid", amount: loan.installmentAmount, txHash, status: "success", timestamp: Date.now(), loanId: loan.loanId, installmentNum: loan.installmentsPaid + 1 });
+        showToast("success", `$${loan.installmentAmount.toFixed(2)} payment confirmed!`, `Installment ${loan.installmentsPaid + 1} of ${loan.installmentsTotal} complete.`, txHash);
         await fetchLoan();
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Transaction failed");
+      setError(parseEthersError(err));
     } finally {
       setRepaying(false);
     }
@@ -135,22 +154,24 @@ export default function Repay() {
   if (!loan) {
     return (
       <div className="min-h-screen pb-24" style={{ background: "#06060f" }}>
-        <div className="px-5 pt-12 pb-6">
-          <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Repayment</p>
-          <h1 className="text-2xl font-black text-white">My Loan</h1>
-        </div>
-        <div className="px-5">
-          <div className="rounded-3xl border border-white/5 p-10 text-center" style={{ background: "#0d0d18" }}>
-            <div className="text-5xl mb-4">💳</div>
-            <p className="text-white font-bold text-lg mb-1">No Active Loan</p>
-            <p className="text-gray-500 text-sm mb-8">You have no outstanding loans right now.</p>
-            <button
-              onClick={() => router.push("/apply")}
-              className="px-8 py-3 rounded-2xl text-white font-bold text-sm"
-              style={{ background: "linear-gradient(135deg, #0d9488, #059669)", boxShadow: "0 4px 20px rgba(13,148,136,0.3)" }}
-            >
-              Apply for a Loan
-            </button>
+        <div className="max-w-md mx-auto">
+          <div className="px-5 pt-12 pb-6">
+            <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Repayment</p>
+            <h1 className="text-2xl font-black text-white">My Loan</h1>
+          </div>
+          <div className="px-5">
+            <div className="rounded-3xl border border-white/5 p-10 text-center" style={{ background: "#0d0d18" }}>
+              <div className="text-5xl mb-4">💳</div>
+              <p className="text-white font-bold text-lg mb-1">No Active Loan</p>
+              <p className="text-gray-500 text-sm mb-8">You have no outstanding loans right now.</p>
+              <button
+                onClick={() => router.push("/apply")}
+                className="px-8 py-3 rounded-2xl text-white font-bold text-sm"
+                style={{ background: "linear-gradient(135deg, #0d9488, #059669)", boxShadow: "0 4px 20px rgba(13,148,136,0.3)" }}
+              >
+                Apply for a Loan
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -160,22 +181,24 @@ export default function Repay() {
   if (isRepaid) {
     return (
       <div className="min-h-screen pb-24" style={{ background: "#06060f" }}>
-        <div className="px-5 pt-12 pb-6">
-          <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Repayment</p>
-          <h1 className="text-2xl font-black text-white">My Loan</h1>
-        </div>
-        <div className="px-5">
-          <div className="rounded-3xl border border-green-500/20 p-10 text-center" style={{ background: "rgba(16,185,129,0.05)" }}>
-            <div className="text-5xl mb-4">🎉</div>
-            <p className="text-green-400 font-black text-2xl mb-1">Loan Complete!</p>
-            <p className="text-green-400/60 text-sm mb-8">Your credit score has been updated.</p>
-            <button
-              onClick={() => router.push("/dashboard")}
-              className="px-8 py-3 rounded-2xl font-bold text-sm"
-              style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid rgba(16,185,129,0.3)" }}
-            >
-              Back to Dashboard
-            </button>
+        <div className="max-w-md mx-auto">
+          <div className="px-5 pt-12 pb-6">
+            <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">Repayment</p>
+            <h1 className="text-2xl font-black text-white">My Loan</h1>
+          </div>
+          <div className="px-5">
+            <div className="rounded-3xl border border-green-500/20 p-10 text-center" style={{ background: "rgba(16,185,129,0.05)" }}>
+              <div className="text-5xl mb-4">🎉</div>
+              <p className="text-green-400 font-black text-2xl mb-1">Loan Complete!</p>
+              <p className="text-green-400/60 text-sm mb-8">Your credit score has been updated.</p>
+              <button
+                onClick={() => router.push("/dashboard")}
+                className="px-8 py-3 rounded-2xl font-bold text-sm"
+                style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", border: "1px solid rgba(16,185,129,0.3)" }}
+              >
+                Back to Dashboard
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -312,7 +335,12 @@ export default function Repay() {
           </button>
         )}
 
-        {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+        {error && (
+          <div className="flex items-start gap-3 p-4 rounded-2xl border border-red-500/20" style={{ background: "rgba(239,68,68,0.06)" }}>
+            <span className="text-base shrink-0">⚠️</span>
+            <p className="text-red-400 text-sm leading-relaxed">{error}</p>
+          </div>
+        )}
       </div>
       </div>
     </div>

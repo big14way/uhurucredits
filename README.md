@@ -2,7 +2,7 @@
 
 > **The first on-chain uncollateralized BNPL (Buy Now Pay Later) credit protocol for Africa.**
 
-Built for the **Chainlink Convergence Hackathon 2026** | [Demo Video](#) | [Live App](https://uhuru-credit.vercel.app)
+Built for the **Chainlink Convergence Hackathon 2026** | [Demo Video](https://youtu.be/ZyjFpjWT6aQ?si=wKxnU_zvADLpfLwC) | [Live App](https://uhuru-credit.vercel.app)
 
 ---
 
@@ -200,12 +200,14 @@ The credit scoring workflow is built with the official **CRE SDK** (`@chainlink/
 
 ```
 ✓ Workflow compiled
+[SIMULATION] Simulator Initialized
+[SIMULATION] Running trigger trigger=cron-trigger@1.0.0
 [USER LOG] Running Uhuru Credit scoring CronTrigger
 [USER LOG] Starting Uhuru Credit scoring workflow - Mono API: https://api.withmono.com
-[USER LOG] Credit score computed: {"score": 400, "worldIdVerified": true, "reclaimVerified": false}
-[USER LOG] Writing credit score on-chain: wallet=0x...001, score=400
+[USER LOG] Credit score computed: {"reclaimVerified": false, "score": 948, "worldIdVerified": true}
+[USER LOG] Writing credit score on-chain: wallet=0x...001, score=948
 [USER LOG] Credit score written on-chain: txHash=0x000...000
-✓ Workflow Simulation Result: "Score: 400"
+✓ Workflow Simulation Result: "Score: 948"
 ```
 
 ### Scoring Algorithm (0-1000)
@@ -263,7 +265,7 @@ Uhuru Credit generates revenue through multiple sustainable streams:
 ### Phase 1: Foundation (Current - Q1 2026)
 - [x] 7 smart contracts with full test suite (25 tests passing)
 - [x] CRE credit scoring workflow with Mono.co integration
-- [x] Official CRE CLI workflow simulation passing (Score: 400)
+- [x] Official CRE CLI workflow simulation passing (Score: 948)
 - [x] World Mini App frontend (4 pages) — deployed at https://uhuru-credit.vercel.app
 - [x] World ID device-level verification integrated and tested
 - [x] Backend API with Reclaim Protocol M-Pesa verification
@@ -443,9 +445,22 @@ npm run dev                  # Starts on port 3000
 ```
 Smart Contracts (Foundry):   25/25 passing
 CRE Scoring Algorithm:       11/11 passing
-CRE Workflow Simulation:     ✓ Compiled & Simulated (Score: 400)
+CRE Workflow Simulation:     ✓ Compiled & Simulated (Score: 948)
 CI Pipeline:                 All checks passing
 ```
+
+## Chainlink Files
+
+All files that use Chainlink products:
+
+| File | Chainlink Product | Description |
+|------|------------------|-------------|
+| [`uhuru-cre/credit-scoring/main.ts`](uhuru-cre/credit-scoring/main.ts) | **CRE SDK** | Main CRE workflow — HTTPClient, EVMClient, CronCapability, DON consensus, report signing |
+| [`uhuru-cre/credit-scoring/workflow.yaml`](uhuru-cre/credit-scoring/workflow.yaml) | **CRE CLI** | Workflow settings for staging/production deployment |
+| [`uhuru-cre/project.yaml`](uhuru-cre/project.yaml) | **CRE CLI** | CRE project config with DON family and RPC endpoints |
+| [`uhuru-cre/credit-scoring/config.json`](uhuru-cre/credit-scoring/config.json) | **CRE** | Workflow runtime config (schedule, contract address, chain) |
+| [`src/CREConsumer.sol`](src/CREConsumer.sol) | **CRE** | On-chain contract receiving CRE Forwarder reports |
+| [`src/CCIPSync.sol`](src/CCIPSync.sol) | **CCIP** | Cross-chain credit score sync (Base <-> Arbitrum) via Chainlink CCIP |
 
 ## Hackathon Tracks
 

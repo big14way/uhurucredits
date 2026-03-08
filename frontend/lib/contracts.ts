@@ -94,6 +94,24 @@ export const ERC20ContractABI = [
   },
 ] as const;
 
+// Parse ethers v6 errors into a short human-readable string
+export function parseEthersError(err: unknown): string {
+  if (!err || !(err instanceof Error)) return "Transaction failed";
+  const e = err as { reason?: string; shortMessage?: string; message: string };
+  if (e.reason) return e.reason;
+  if (e.shortMessage) return e.shortMessage;
+  // extract `reason="..."` from verbose ethers message
+  const match = e.message.match(/reason="([^"]+)"/);
+  if (match) return match[1];
+  // extract action-reverted message
+  const revert = e.message.match(/reverted[^:]*: "?([^"(]+)"?/i);
+  if (revert) return revert[1].trim();
+  // User rejected
+  if (e.message.includes("user rejected") || e.message.includes("ACTION_REJECTED")) return "Transaction rejected";
+  // Fallback: first 120 chars
+  return e.message.slice(0, 120);
+}
+
 const provider = new ethers.JsonRpcProvider("https://sepolia.base.org");
 
 export async function getCreditProfile(address: string) {

@@ -7,6 +7,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "📊" },
   { href: "/apply",     label: "Apply",     icon: "💳" },
   { href: "/repay",     label: "Repay",     icon: "💰" },
+  { href: "/history",   label: "History",   icon: "📋" },
 ];
 
 export default function BottomNav() {

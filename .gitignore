@@ -25,7 +25,11 @@ dist/
 # Runtime data (wallet state, persisted profiles)
 backend/data/
 
+# CRE build artifacts
+.cre_build_tmp.js
+
 # OS
 .DS_Store
 Thumbs.db
 .claude/
+.vercel

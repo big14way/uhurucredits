@@ -4,8 +4,10 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { MiniKit } from "@worldcoin/minikit-js";
 import { ethers } from "ethers";
-import { API_URL, CONTRACTS, LoanManagerContractABI, switchToBaseSepolia } from "@/lib/contracts";
+import { API_URL, CONTRACTS, LoanManagerContractABI, switchToBaseSepolia, parseEthersError } from "@/lib/contracts";
 import { useWallet } from "@/lib/useWallet";
+import { useToast } from "@/app/components/Toast";
+import { useTxHistory } from "@/lib/useTxHistory";
 
 function getAPR(score: number) {
   if (score >= 700) return 5;
@@ -24,6 +26,8 @@ function getTier(score: number): { label: string; color: string; bg: string } {
 export default function Apply() {
   const router = useRouter();
   const { address, isInWorldApp } = useWallet();
+  const { showToast } = useToast();
+  const { addTx } = useTxHistory();
   const [score, setScore] = useState(0);
   const [maxAmount, setMaxAmount] = useState(0);
   const [worldIdVerified, setWorldIdVerified] = useState(false);
@@ -72,6 +76,9 @@ export default function Apply() {
           }],
         });
         if (finalPayload.status === "success") {
+          const txHash = (finalPayload as { transaction_id?: string }).transaction_id ?? "";
+          addTx({ type: "loan_applied", amount, txHash, status: "success", timestamp: Date.now() });
+          showToast("success", `$${amount} USDC loan approved!`, "Funds sent to your wallet.", txHash);
           router.push("/repay");
         } else {
           setError("Transaction failed. Please try again.");
@@ -89,11 +96,14 @@ export default function Apply() {
         ]);
         const toAddr = ethers.getAddress(CONTRACTS.LOAN_MANAGER);
         const tx = await signer.sendTransaction({ to: toAddr, data });
-        await tx.wait();
+        const receipt = await tx.wait();
+        const txHash = receipt?.hash ?? tx.hash;
+        addTx({ type: "loan_applied", amount, txHash, status: "success", timestamp: Date.now() });
+        showToast("success", `$${amount} USDC loan approved!`, "Funds sent to your wallet.", txHash);
         router.push("/repay");
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Transaction failed");
+      setError(parseEthersError(err));
     } finally {
       setApplying(false);
     }
@@ -295,7 +305,12 @@ export default function Apply() {
           ) : `Confirm — $${amount} USDC`}
         </button>
 
-        {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+        {error && (
+          <div className="flex items-start gap-3 p-4 rounded-2xl border border-red-500/20" style={{ background: "rgba(239,68,68,0.06)" }}>
+            <span className="text-base shrink-0">⚠️</span>
+            <p className="text-red-400 text-sm leading-relaxed">{error}</p>
+          </div>
+        )}
       </div>
       </div>
     </div>
